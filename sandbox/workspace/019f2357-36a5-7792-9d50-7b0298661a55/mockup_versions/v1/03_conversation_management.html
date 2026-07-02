@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản lý hội thoại</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .sidebar { width: 250px; }
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); transition: transform 0.3s; }
+      .sidebar.open { transform: translateX(0); }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex">
+  <!-- Sidebar -->
+  <nav id="sidebar" class="sidebar bg-white shadow-md h-full p-4 hidden md:block">
+    <h2 class="text-xl font-semibold mb-6">Zalo CS</h2>
+    <ul class="space-y-2">
+      <li><a href="01_login.html" class="block py-2 px-3 rounded hover:bg-gray-200">Đăng nhập</a></li>
+      <li><a href="02_dashboard.html" class="block py-2 px-3 rounded hover:bg-gray-200">Dashboard</a></li>
+      <li><a href="03_conversation_management.html" class="block py-2 px-3 rounded bg-indigo-100 font-medium">Quản lý hội thoại</a></li>
+      <li><a href="04_script_management.html" class="block py-2 px-3 rounded hover:bg-gray-200">Quản lý kịch bản</a></li>
+      <li><a href="05_settings.html" class="block py-2 px-3 rounded hover:bg-gray-200">Cài đặt</a></li>
+    </ul>
+  </nav>
+
+  <!-- Mobile sidebar toggle -->
+  <button id="sidebarToggle" class="md:hidden absolute top-4 left-4 z-20 p-2 bg-indigo-600 text-white rounded">
+    ☰
+  </button>
+
+  <!-- Main content -->
+  <main class="flex-1 p-6 overflow-auto">
+    <header class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">Quản lý hội thoại</h1>
+      <button id="addConversationBtn" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+        Tạo mới (Mock)
+      </button>
+    </header>
+
+    <!-- Filters -->
+    <section class="bg-white p-4 rounded shadow-sm mb-6 flex flex-col md:flex-row md:items-center md:space-x-4">
+      <div class="flex-1 mb-2 md:mb-0">
+        <input type="text" placeholder="Tìm kiếm khách hàng, tin nhắn..." class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <div class="w-48">
+        <select class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <option value="">Tất cả trạng thái</option>
+          <option value="open">Mở</option>
+          <option value="transfer">Chuyển</option>
+          <option value="closed">Đóng</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Conversation table -->
+    <section class="bg-white rounded shadow-sm overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">#ID</th>
+            <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Khách hàng</th>
+            <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Tin nhắn cuối</th>
+            <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Thời gian</th>
+            <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Trạng thái</th>
+            <th class="px-4 py-2 text-center text-sm font-medium text-gray-700">Hành động</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+          <!-- Mock rows -->
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-2 text-sm text-gray-800">001</td>
+            <td class="px-4 py-2 text-sm text-gray-800">Nguyễn Văn A</td>
+            <td class="px-4 py-2 text-sm text-gray-600 truncate max-w-xs">Xin chào, mình muốn hỏi về giá sản phẩm...</td>
+            <td class="px-4 py-2 text-sm text-gray-600">2024-07-02 10:15</td>
+            <td class="px-4 py-2">
+              <span class="inline-block px-2 py-1 text-xs font-semibold text-white bg-green-500 rounded">Mở</span>
+            </td>
+            <td class="px-4 py-2 text-center space-x-2">
+              <button data-id="001" class="viewBtn bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">Xem</button>
+              <button data-id="001" class="transferBtn bg-yellow-500 text-white px-2 py-1 rounded text-xs hover:bg-yellow-600">Chuyển</button>
+              <button data-id="001" class="closeBtn bg-gray-500 text-white px-2 py-1 rounded text-xs hover:bg-gray-600">Đóng</button>
+            </td>
+          </tr>
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-2 text-sm text-gray-800">002</td>
+            <td class="px-4 py-2 text-sm text-gray-800">Trần Thị B</td>
+            <td class="px-4 py-2 text-sm text-gray-600 truncate max-w-xs">Mình muốn đặt hàng ngay hôm nay.</td>
+            <td class="px-4 py-2 text-sm text-gray-600">2024-07-02 09:45</td>
+            <td class="px-4 py-2">
+              <span class="inline-block px-2 py-1 text-xs font-semibold text-white bg-yellow-500 rounded">Chuyển</span>
+            </td>
+            <td class="px-4 py-2 text-center space-x-2">
+              <button data-id="002" class="viewBtn bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">Xem</button>
+              <button data-id="002" class="transferBtn bg-yellow-500 text-white px-2 py-1 rounded text-xs hover:bg-yellow-600">Chuyển</button>
+              <button data-id="002" class="closeBtn bg-gray-500 text-white px-2 py-1 rounded text-xs hover:bg-gray-600">Đóng</button>
+            </td>
+          </tr>
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-2 text-sm text-gray-800">003</td>
+            <td class="px-4 py-2 text-sm text-gray-800">Lê Văn C</td>
+            <td class="px-4 py-2 text-sm text-gray-600 truncate max-w-xs">Cảm ơn, đã giải quyết xong.</td>
+            <td class="px-4 py-2 text-sm text-gray-600">2024-07-01 16:20</td>
+            <td class="px-4 py-2">
+              <span class="inline-block px-2 py-1 text-xs font-semibold text-white bg-gray-400 rounded">Đóng</span>
+            </td>
+            <td class="px-4 py-2 text-center space-x-2">
+              <button data-id="003" class="viewBtn bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">Xem</button>
+              <button data-id="003" class="transferBtn bg-yellow-500 text-white px-2 py-1 rounded text-xs hover:bg-yellow-600">Chuyển</button>
+              <button data-id="003" class="closeBtn bg-gray-500 text-white px-2 py-1 rounded text-xs hover:bg-gray-600">Đóng</button>
+            </td>
+          </tr>
+          <!-- Add more rows as needed -->
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Pagination (mock) -->
+    <div class="flex justify-end mt-4 space-x-2">
+      <button class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">«</button>
+      <button class="px-3 py-1 bg-indigo-600 text-white rounded">1</button>
+      <button class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">2</button>
+      <button class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">3</button>
+      <button class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">»</button>
+    </div>
+  </main>
+
+  <!-- Conversation Detail Modal -->
+  <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg w-full max-w-2xl mx-4 p-6 relative">
+      <button id="closeModal" class="absolute top-2 right-2 text-gray-500 hover:text-gray-800">&times;</button>
+      <h2 class="text-xl font-semibold mb-4">Chi tiết hội thoại #<span id="modalId"></span></h2>
+      <div class="space-y-4 max-h-96 overflow-y-auto">
+        <!-- Mock messages -->
+        <div class="flex">
+          <div class="bg-gray-100 p-3 rounded-lg max-w-xs">
+            <p class="text-sm text-gray-800">Xin chào, mình muốn hỏi về giá sản phẩm.</p>
+            <span class="text-xs text-gray-500 mt-1 block">10:15</span>
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <div class="bg-indigo-100 p-3 rounded-lg max-w-xs">
+            <p class="text-sm text-gray-800">Chào anh! Sản phẩm hiện đang có khuyến mãi 10%.</p>
+            <span class="text-xs text-gray-500 mt-1 block text-right">10:16</span>
+          </div>
+        </div>
+        <!-- Add more mock messages -->
+      </div>
+      <div class="mt-4 flex justify-end">
+        <button class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">Gửi trả lời</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Sidebar toggle for mobile
+    const sidebar = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarToggle');
+    toggleBtn.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      sidebar.classList.toggle('hidden');
+    });
+
+    // Modal handling
+    const modal = document.getElementById('detailModal');
+    const closeModalBtn = document.getElementById('closeModal');
+    const modalIdSpan = document.getElementById('modalId');
+
+    document.querySelectorAll('.viewBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        modalIdSpan.textContent = id;
+        modal.classList.remove('hidden');
+      });
+    });
+
+    closeModalBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+
+    // Mock actions for transfer & close
+    document.querySelectorAll('.transferBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        alert('Chuyển hội thoại ID ' + btn.getAttribute('data-id') + ' sang nhân viên CS (mock).');
+      });
+    });
+
+    document.querySelectorAll('.closeBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        alert('Đóng hội thoại ID ' + btn.getAttribute('data-id') + ' (mock).');
+      });
+    });
+
+    // Add conversation mock
+    document.getElementById('addConversationBtn').addEventListener('click', () => {
+      alert('Tạo hội thoại mới (mock).');
+    });
+  </script>
+</body>
+</html>

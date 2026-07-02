@@ -1,0 +1,9 @@
+{
+  "python_version": "3.12",
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "SoftwareFactory": "graph/graph_builder.py:build_graph"
+  }
+}

@@ -1,0 +1,54 @@
+# Docker Compose for SoftwareFactory
+# Provides Postgres (+ pgvector, dùng chung cho LangGraph checkpoint VÀ Instruction Store)
+# và Redis (cho caching / task queue)
+# Save this file in the root of the `softwarefactory/` project and run:
+#   docker compose up -d
+# Adjust environment variables as needed in your `.env` file.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15   # đổi từ postgres:15 — cần pgvector cho Instruction Store
+    container_name: sf_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sf_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sf_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-softwarefactory}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sf_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: sf_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"   # đổi từ 6380 — khớp với REDIS_URL đã có trong .env
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sf_network
+
+networks:
+  sf_network:
+    driver: bridge
+    # Tạo network riêng ngay từ giờ, để Phase 3-4 thêm OpenHands Agent Server,
+    # Backend API, Frontend vào cùng compose này thì các service gọi nhau
+    # qua tên service (postgres:5432, redis:6379) thay vì qua localhost.
+
+volumes:
+  postgres_data:
+  redis_data:

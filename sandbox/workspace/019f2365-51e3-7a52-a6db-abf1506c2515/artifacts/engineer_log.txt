@@ -1,0 +1,1 @@
+OpenHands error: Conversation run failed for id=5eb7da4a-dcd6-4532-8cf1-0ef8c715ce28: litellm.NotFoundError: NotFoundError: OpenAIException - 404 page not found

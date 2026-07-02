@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Export Conversation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .modal-bg { background: rgba(0,0,0,0.5); }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="bg-white shadow">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <h1 class="text-2xl font-semibold text-gray-800">Export Conversation</h1>
+      <nav>
+        <a href="01_login.html" class="text-gray-600 hover:text-gray-800 mr-4">Login</a>
+        <a href="02_dashboard.html" class="text-gray-600 hover:text-gray-800">Dashboard</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl mx-auto px-4 py-6">
+    <!-- Filters -->
+    <section class="bg-white p-4 rounded-lg shadow mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+          <input type="date" id="startDate" class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+          <input type="date" id="endDate" class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div class="flex items-end">
+          <button id="applyFilter" class="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 transition">
+            Apply Filter
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Export All -->
+    <section class="flex justify-end mb-4">
+      <button id="exportAllBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">
+        Export All (CSV)
+      </button>
+    </section>
+
+    <!-- Conversation Table -->
+    <section class="bg-white rounded-lg shadow overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Conversation ID</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-5
+00 uppercase">Start Time</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">End Time</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Messages</th>
+            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Action</th>
+          </tr>
+        </thead>
+        <tbody id="conversationBody" class="bg-white divide-y divide-gray-200">
+          <!-- Mock rows will be injected by JS -->
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- Export Confirmation Modal -->
+  <div id="modal" class="fixed inset-0 flex items-center justify-center hidden modal-bg">
+    <div class="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
+      <h2 class="text-lg font-semibold mb-4">Confirm Export</h2>
+      <p class="mb-6">Do you want to download the selected conversation(s) as a CSV file?</p>
+      <div class="flex justify-end space-x-3">
+        <button id="cancelModal" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
+        <button id="confirmExport" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mock conversation data
+    const conversations = [
+      { id: 'C001', customer: 'Nguyễn Văn A', start: '2024-06-20 09:12', end: '2024-06-20 09:45', messages: 8 },
+      { id: 'C002', customer: 'Trần Thị B', start: '2024-06-21 14:05', end: '2024-06-21 14:30', messages: 5 },
+      { id: 'C003', customer: 'Lê Văn C', start: '2024-06-22 11:20', end: '2024-06-22 11:55', messages: 12 },
+      { id: 'C004', customer: 'Phạm Thị D', start: '2024-06-23 16:40', end: '2024-06-23 17:10', messages: 7 },
+    ];
+
+    const tbody = document.getElementById('conversationBody');
+
+    function renderRows(data) {
+      tbody.innerHTML = '';
+      data.forEach(conv => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${conv.id}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${conv.customer}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${conv.start}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${conv.end}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${conv.messages}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-center">
+            <button data-id="${conv.id}" class="exportBtn bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 transition text-sm">Export</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    renderRows(conversations);
+
+    // Modal handling
+    const modal = document.getElementById('modal');
+    let exportTargetIds = [];
+
+    function openModal(ids) {
+      exportTargetIds = ids;
+      modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+      modal.classList.add('hidden');
+      exportTargetIds = [];
+    }
+
+    document.getElementById('cancelModal').addEventListener('click', closeModal);
+    document.getElementById('confirmExport').addEventListener('click', () => {
+      const dataToExport = conversations.filter(c => exportTargetIds.includes(c.id));
+      downloadCSV(dataToExport);
+      closeModal();
+    });
+
+    // Export button per row
+    tbody.addEventListener('click', e => {
+      if (e.target.classList.contains('exportBtn')) {
+        const id = e.target.getAttribute('data-id');
+        openModal([id]);
+      }
+    });
+
+    // Export All
+    document.getElementById('exportAllBtn').addEventListener('click', () => {
+      openModal(conversations.map(c => c.id));
+    });
+
+    // CSV generation
+    function downloadCSV(data) {
+      const header = ['Conversation ID', 'Customer', 'Start Time', 'End Time', 'Messages'];
+      const rows = data.map(c => [c.id, c.customer, c.start, c.end, c.messages]);
+      const csvContent = [header, ...rows].map(e => e.map(v => `"${v}"`).join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      const now = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      link.setAttribute('download', `conversations_${now}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Simple filter (date range) – mock implementation
+    document.getElementById('applyFilter').addEventListener('click', () => {
+      const start = document.getElementById('startDate').value;
+      const end = document.getElementById('endDate').value;
+      if (!start && !end) {
+        renderRows(conversations);
+        return;
+      }
+      const filtered = conversations.filter(c => {
+        const convDate = c.start.split(' ')[0];
+        return (!start || convDate >= start) && (!end || convDate <= end);
+      });
+      renderRows(filtered);
+    });
+  </script>
+</body>
+</html>

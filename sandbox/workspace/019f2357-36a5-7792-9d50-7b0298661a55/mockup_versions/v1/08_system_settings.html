@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cài đặt hệ thống</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .sidebar { min-width: 200px; }
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .mobile-menu-btn { display: block; }
+    }
+    @media (min-width: 769px) {
+      .mobile-menu-btn { display: none; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 flex min-h-screen">
+  <!-- Sidebar -->
+  <aside class="sidebar bg-white shadow-md p-4 hidden md:block">
+    <h2 class="text-xl font-semibold mb-6">Menu</h2>
+    <nav class="space-y-2">
+      <a href="01_login.html" class="block text-gray-700 hover:text-blue-600">Login</a>
+      <a href="02_dashboard.html" class="block text-gray-700 hover:text-blue-600">Dashboard</a>
+      <a href="03_script_management.html" class="block text-gray-700 hover:text-blue-600">Quản lý kịch bản</a>
+      <a href="04_schedule_management.html" class="block text-gray-700 hover:text-blue-600">Quản lý lịch</a>
+      <a href="05_report.html" class="block text-gray-700 hover:text-blue-600">Báo cáo</a>
+      <a href="08_system_settings.html" class="block text-blue-600 font-medium">Cài đặt hệ thống</a>
+    </nav>
+  </aside>
+
+  <!-- Main content -->
+  <div class="flex-1 flex flex-col">
+    <!-- Top bar -->
+    <header class="bg-white shadow-sm flex items-center justify-between px-4 py-3 md:px-6">
+      <button id="mobileMenuBtn" class="mobile-menu-btn text-gray-600 focus:outline-none">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round"
+             stroke-linejoin="round" stroke-width="2"
+             d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <h1 class="text-2xl font-semibold text-gray-800">Cài đặt hệ thống</h1>
+      <div></div>
+    </header>
+
+    <!-- Settings form -->
+    <main class="p-6 md:p-8 overflow-auto">
+      <section class="bg-white rounded-lg shadow p-6 md:p-8 max-w-2xl mx-auto">
+        <h2 class="text-xl font-semibold mb-4 text-gray-800">Cấu hình chung</h2>
+        <form id="settingsForm" class="space-y-6">
+          <!-- Alert threshold -->
+          <div>
+            <label class="block text-gray-700 font-medium mb-2" for="alertThreshold">
+              Ngưỡng cảnh báo (giây)
+            </label>
+            <input type="number" id="alertThreshold" name="alertThreshold"
+                   class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                   placeholder="Ví dụ: 2" min="1" value="2">
+            <p class="text-sm text-gray-500 mt-1">Thời gian phản hồi tối đa trước khi kích hoạt cảnh báo.</p>
+          </div>
+
+          <!-- Data retention -->
+          <div>
+            <label class="block text-gray-700 font-medium mb-2" for="retentionDays">
+              Thời gian lưu trữ dữ liệu (ngày)
+            </label>
+            <input type="number" id="retentionDays" name="retentionDays"
+                   class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                   placeholder="Ví dụ: 30" min="1" value="30">
+            <p class="text-sm text-gray-500 mt-1">Sau thời gian này, dữ liệu sẽ tự động xóa.</p>
+          </div>
+
+          <!-- Email alerts toggle -->
+          <div class="flex items-center justify-between">
+            <span class="text-gray-700 font-medium">Bật thông báo qua email</span>
+            <label for="emailAlertToggle" class="inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="emailAlertToggle" class="sr-only peer" checked>
+              <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600
+                          peer-checked:after:translate-x-full after:content-[''] after:absolute
+                          after:top-0.5 after:left-0.5 after:bg-white after:border after:rounded-full
+                          after:h-5 after:w-5 after:transition-all"></div>
+            </label>
+          </div>
+
+          <!-- Save button -->
+          <div class="flex justify-end">
+            <button type="button" id="saveBtn"
+                    class="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 focus:outline-none">
+              Lưu thay đổi
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal -->
+  <div id="modalOverlay"
+       class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
+      <h3 class="text-lg font-semibold mb-4">Xác nhận lưu</h3>
+      <p class="mb-6">Bạn có chắc muốn lưu các thay đổi không?</p>
+      <div class="flex justify-end space-x-3">
+        <button id="cancelBtn"
+                class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 focus:outline-none">
+          Hủy
+        </button>
+        <button id="confirmBtn"
+                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none">
+          Xác nhận
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mobile menu toggle
+    const mobileBtn = document.getElementById('mobileMenuBtn');
+    const sidebar = document.querySelector('.sidebar');
+    mobileBtn?.addEventListener('click', () => {
+      sidebar.classList.toggle('hidden');
+    });
+
+    // Modal handling
+    const modal = document.getElementById('modalOverlay');
+    const saveBtn = document.getElementById('saveBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const confirmBtn = document.getElementById('confirmBtn');
+
+    saveBtn.addEventListener('click', () => {
+      modal.classList.remove('hidden');
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+
+    confirmBtn.addEventListener('click', () => {
+      // Mock save action
+      alert('Đã lưu cài đặt thành công!');
+      modal.classList.add('hidden');
+    });
+  </script>
+</body>
+</html>

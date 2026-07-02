@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Chatbot Zalo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .sidebar { min-width: 200px; }
+    .active { background-color: #e5e7eb; }
+  </style>
+</head>
+<body class="bg-gray-100 flex min-h-screen">
+  <!-- Sidebar -->
+  <nav class="sidebar bg-white border-r border-gray-200 p-4 hidden md:block">
+    <h2 class="text-xl font-semibold mb-6">Zalo Chatbot</h2>
+    <ul class="space-y-2">
+      <li><a href="01_login.html" class="block py-2 px-3 rounded hover:bg-gray-200">Login</a></li>
+      <li><a href="02_dashboard.html" class="block py-2 px-3 rounded bg-gray-200 font-medium">Dashboard</a></li>
+      <li><a href="03_script_list.html" class="block py-2 px-3 rounded hover:bg-gray-200">Quản lý kịch bản</a></li>
+      <li><a href="04_schedule_list.html" class="block py-2 px-3 rounded hover:bg-gray-200">Lập lịch</a></li>
+      <li><a href="05_report.html" class="block py-2 px-3 rounded hover:bg-gray-200">Báo cáo</a></li>
+      <li><a href="06_settings.html" class="block py-2 px-3 rounded hover:bg-gray-200">Cài đặt</a></li>
+    </ul>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="flex-1 flex flex-col">
+    <!-- Top Bar -->
+    <header class="flex items-center justify-between bg-white shadow px-4 py-3">
+      <button id="mobileMenuBtn" class="md:hidden text-gray-600 focus:outline-none">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <h1 class="text-2xl font-semibold text-gray-800">Dashboard</h1>
+      <div class="relative">
+        <button id="profileBtn" class="flex items-center space-x-2 focus:outline-none">
+          <span class="text-gray-700 font-medium">Admin</span>
+          <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd"
+                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.293l3.71-4.06a.75.75 0 111.08 1.04l-4.25 4.65a.75.75 0 01-1.08 0l-4.25-4.65a.75.75 0 01.02-1.06z"
+                  clip-rule="evenodd"/>
+          </svg>
+        </button>
+        <div id="profileMenu" class="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded shadow-lg hidden">
+          <a href="06_profile.html" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Profile</a>
+          <a href="01_login.html" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Logout</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Dashboard Content -->
+    <main class="p-6 overflow-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white rounded-lg shadow p-5">
+          <div class="flex items-center">
+            <div class="p-3 bg-blue-100 rounded-full">
+              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M17 20h5V4H2v16h5m10 0v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-500">Cuộc hội thoại</p>
+              <p class="text-2xl font-semibold text-gray-800">1,254</p>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5">
+          <div class="flex items-center">
+            <div class="p-3 bg-green-100 rounded-full">
+              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M3 10h18M3 6h18M3 14h12M3 18h12"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-500">Tin nhắn/phút</p>
+              <p class="text-2xl font-semibold text-gray-800">87</p>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5">
+          <div class="flex items-center">
+            <div class="p-3 bg-yellow-100 rounded-full">
+              <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 8v4l3 3"/>
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-500">Thời gian trả lời trung bình</p>
+              <p class="text-2xl font-semibold text-gray-800">1.8s</p>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5">
+          <div class="flex items-center">
+            <div class="p-3 bg-red-100 rounded-full">
+              <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 12h6m2 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-500">Lỗi trong 24h</p>
+              <p class="text-2xl font-semibold text-gray-800">3</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Conversations Table -->
+      <section class="bg-white rounded-lg shadow overflow-hidden">
+        <header class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+          <h2 class="text-lg font-semibold text-gray-800">Cuộc hội thoại gần nhất</h2>
+          <button id="alertBtn" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 focus:outline-none">
+            Xem cảnh báo
+          </button>
+        </header>
+        <div class="p-6 overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-2 text-left text-sm font-medium text-gray-600">ID</th>
+                <th class="px-4 py-2 text-left text-sm font-medium text-gray-600">Khách hàng</th>
+                <th class="px-4 py-2 text-left text-sm font-medium text-gray-600">Trạng thái</th>
+                <th class="px-4 py-2 text-left text-sm font-medium text-gray-600">Tin nhắn cuối</th>
+                <th class="px-4 py-2 text-left text-sm font-medium text-gray-600">Thời gian</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+              <tr class="hover:bg-gray-50">
+                <td class="px-4 py-2 text-sm text-gray-700">#10234</td>
+                <td class="px-4 py-2 text-sm text-gray-700">Nguyễn Văn A</td>
+                <td class="px-4 py-2"><span class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">Hoàn thành</span></td>
+                <td class="px-4 py-2 text-sm text-gray-700">Cảm ơn bạn!</td>
+                <td class="px-4 py-2 text-sm text-gray-500">10:12 02/07</td>
+              </tr>
+              <tr class="hover:bg-gray-50">
+                <td class="px-4 py-2 text-sm text-gray-700">#10235</td>
+                <td class="px-4 py-2 text-sm text-gray-700">Trần Thị B</td>
+                <td class="px-4 py-2"><span class="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">Đang chờ</span></td>
+                <td class="px-4 py-2 text-sm text-gray-700">Tôi muốn nói chuyện với nhân viên</td>
+                <td class="px-4 py-2 text-sm text-gray-500">09:58 02/07</td>
+              </tr>
+              <tr class="hover:bg-gray-50">
+                <td class="px-4 py-2 text-sm text-gray-700">#10236</td>
+                <td class="px-4 py-2 text-sm text-gray-700">Lê Văn C</td>
+                <td class="px-4 py-2"><span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">Lỗi</span></td>
+                <td class="px-4 py-2 text-sm text-gray-700">Không nhận được phản hồi</td>
+                <td class="px-4 py-2 text-sm text-gray-500">08:45 02/07</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Alert Modal -->
+  <div id="alertModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg shadow-lg w-11/12 md:w-1/2 p-6">
+      <h3 class="text-xl font-semibold mb-4">Cảnh báo hệ thống</h3>
+      <ul class="list-disc list-inside space-y-2 text-gray-700">
+        <li>Thời gian phản hồi trung bình vượt ngưỡng 2s (hiện tại: 2.3s)</li>
+        <li>Số lỗi API Zalo trong 1h: 5</li>
+        <li>Queue tin nhắn đang chờ xử lý: 42</li>
+      </ul>
+      <div class="mt-6 text-right">
+        <button id="closeAlert" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 focus:outline-none">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mobile menu toggle
+    const mobileBtn = document.getElementById('mobileMenuBtn');
+    const sidebar = document.querySelector('.sidebar');
+    mobileBtn?.addEventListener('click', () => {
+      sidebar.classList.toggle('hidden');
+    });
+
+    // Profile dropdown
+    const profileBtn = document.getElementById('profileBtn');
+    const profileMenu = document.getElementById('profileMenu');
+    profileBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      profileMenu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', () => {
+      profileMenu?.classList.add('hidden');
+    });
+
+    // Alert modal
+    const alertBtn = document.getElementById('alertBtn');
+    const alertModal = document.getElementById('alertModal');
+    const closeAlert = document.getElementById('closeAlert');
+
+    alertBtn?.addEventListener('click', () => {
+      alertModal.classList.remove('hidden');
+    });
+    closeAlert?.addEventListener('click', () => {
+      alertModal.classList.add('hidden');
+    });
+  </script>
+</body>
+</html>

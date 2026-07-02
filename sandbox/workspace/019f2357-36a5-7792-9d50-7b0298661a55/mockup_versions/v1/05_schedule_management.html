@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản lý lịch</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .modal { transition: opacity 0.25s ease; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="bg-white shadow">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <h1 class="text-2xl font-semibold text-gray-800">Quản lý lịch</h1>
+      <nav class="space-x-4">
+        <a href="01_login.html" class="text-gray-600 hover:text-indigo-600">Đăng nhập</a>
+        <a href="02_dashboard.html" class="text-gray-600 hover:text-indigo-600">Dashboard</a>
+        <a href="03_script_management.html" class="text-gray-600 hover:text-indigo-600">Kịch bản</a>
+        <a href="04_report.html" class="text-gray-600 hover:text-indigo-600">Báo cáo</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl mx-auto px-4 py-6">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-xl font-medium text-gray-700">Danh sách lịch gửi</h2>
+      <button id="openModalBtn"
+        class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 focus:outline-none">
+        Thêm lịch
+      </button>
+    </div>
+
+    <div class="bg-white rounded-lg shadow overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tên lịch</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thời gian gửi</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trạng thái</th>
+            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Hành động</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+          <!-- Mock rows -->
+          <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">1</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Chào mừng khách mới</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">08:00, 01/09/2026</td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                Đang hoạt động
+              </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium space-x-2">
+              <button class="text-indigo-600 hover:text-indigo-900 editBtn">Sửa</button>
+              <button class="text-red-600 hover:text-red-900 deleteBtn">Xóa</button>
+            </td>
+          </tr>
+          <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">2</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Nhắc nhở thanh toán</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">14:30, 05/09/2026</td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                Đã tạm dừng
+              </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium space-x-2">
+              <button class="text-indigo-600 hover:text-indigo-900 editBtn">Sửa</button>
+              <button class="text-red-600 hover:text-red-900 deleteBtn">Xóa</button>
+            </td>
+          </tr>
+          <!-- Add more mock rows as needed -->
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal"
+    class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 hidden modal">
+    <div class="bg-white rounded-lg w-full max-w-lg mx-4">
+      <div class="flex justify-between items-center border-b px-6 py-4">
+        <h3 class="text-lg font-medium text-gray-800">Thêm / Sửa lịch</h3>
+        <button id="closeModalBtn" class="text-gray-400 hover:text-gray-600 focus:outline-none">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+            viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <form class="px-6 py-4 space-y-4" id="scheduleForm">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Tên lịch</label>
+          <input type="text" required
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            placeholder="Nhập tên lịch">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Nội dung tin</label>
+          <textarea rows="3" required
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            placeholder="Nội dung tin sẽ gửi"></textarea>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Ngày gửi</label>
+            <input type="date" required
+              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Giờ gửi</label>
+            <input type="time" required
+              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+          </div>
+        </div>
+        <div class="flex items-center">
+          <input id="repeatCheck" type="checkbox"
+            class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+          <label for="repeatCheck" class="ml-2 block text-sm text-gray-700">
+            Lặp lại hàng ngày
+          </label>
+        </div>
+        <div class="flex justify-end space-x-3 pt-2">
+          <button type="button" id="cancelBtn"
+            class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 focus:outline-none">
+            Hủy
+          </button>
+          <button type="submit"
+            class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 focus:outline-none">
+            Lưu
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Modal handling
+    const modal = document.getElementById('modal');
+    const openBtn = document.getElementById('openModalBtn');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+
+    openBtn.addEventListener('click', () => modal.classList.remove('hidden'));
+    closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+    cancelBtn.addEventListener('click', () => modal.classList.add('hidden'));
+
+    // Dummy edit button behavior (populate modal with mock data)
+    document.querySelectorAll('.editBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // In real app, load data into form fields
+        modal.classList.remove('hidden');
+      });
+    });
+
+    // Dummy delete confirmation
+    document.querySelectorAll('.deleteBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Bạn có chắc muốn xóa lịch này?')) {
+          // In real app, perform delete action
+          alert('Đã xóa (giả lập).');
+        }
+      });
+    });
+
+    // Form submit mock
+    document.getElementById('scheduleForm').addEventListener('submit', e => {
+      e.preventDefault();
+      alert('Lưu lịch thành công (giả lập).');
+      modal.classList.add('hidden');
+      e.target.reset();
+    });
+  </script>
+</body>
+</html>

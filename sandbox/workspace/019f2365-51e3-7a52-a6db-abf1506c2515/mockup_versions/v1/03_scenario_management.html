@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản lý kịch bản</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .sidebar { min-width: 200px; }
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 flex min-h-screen">
+  <!-- Sidebar -->
+  <nav class="sidebar bg-white border-r border-gray-200 p-4 hidden md:block">
+    <h2 class="text-xl font-semibold mb-6">Admin Console</h2>
+    <ul class="space-y-2">
+      <li><a href="01_login.html" class="block py-2 px-3 rounded hover:bg-gray-200">Đăng nhập</a></li>
+      <li><a href="02_dashboard.html" class="block py-2 px-3 rounded hover:bg-gray-200">Dashboard</a></li>
+      <li><a href="03_scenario_management.html" class="block py-2 px-3 rounded bg-gray-200 font-medium">Quản lý kịch bản</a></li>
+      <li><a href="04_schedule_management.html" class="block py-2 px-3 rounded hover:bg-gray-200">Quản lý lịch gửi</a></li>
+      <li><a href="05_settings.html" class="block py-2 px-3 rounded hover:bg-gray-200">Cấu hình</a></li>
+    </ul>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="flex-1 flex flex-col">
+    <!-- Header -->
+    <header class="bg-white shadow-sm p-4 flex justify-between items-center">
+      <h1 class="text-2xl font-semibold">Quản lý kịch bản</h1>
+      <button id="openModalBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+        Thêm kịch bản
+      </button>
+    </header>
+
+    <!-- Table -->
+    <main class="p-4 overflow-auto">
+      <div class="bg-white rounded shadow-sm">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-700">Tên kịch bản</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-700">Mô tả</th>
+              <th class="px-6 py-3 text-center text-sm font-medium text-gray-700">Trạng thái</th>
+              <th class="px-6 py-3 text-center text-sm font-medium text-gray-700">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <!-- Mock row 1 -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Chào hỏi khách hàng</td>
+              <td class="px-6 py-4 text-sm text-gray-600">Kịch bản chào hỏi và thu thập thông tin cơ bản.</td>
+              <td class="px-6 py-4 text-center">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Bật</span>
+              </td>
+              <td class="px-6 py-4 text-center space-x-2">
+                <button data-id="1" class="editBtn bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 text-sm">Sửa</button>
+                <button data-id="1" class="deleteBtn bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 text-sm">Xóa</button>
+              </td>
+            </tr>
+            <!-- Mock row 2 -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Hỗ trợ đơn hàng</td>
+              <td class="px-6 py-4 text-sm text-gray-600">Trả lời các câu hỏi về trạng thái đơn hàng.</td>
+              <td class="px-6 py-4 text-center">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Tắt</span>
+              </td>
+              <td class="px-6 py-4 text-center space-x-2">
+                <button data-id="2" class="editBtn bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 text-sm">Sửa</button>
+                <button data-id="2" class="deleteBtn bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 text-sm">Xóa</button>
+              </td>
+            </tr>
+            <!-- Add more mock rows as needed -->
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal -->
+  <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg w-full max-w-lg mx-4">
+      <div class="flex justify-between items-center border-b px-6 py-4">
+        <h3 class="text-lg font-medium">Thêm kịch bản mới</h3>
+        <button id="closeModalBtn" class="text-gray-500 hover:text-gray-700">&times;</button>
+      </div>
+      <form id="scenarioForm" class="px-6 py-4 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Tên kịch bản</label>
+          <input type="text" name="name" required class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Mô tả</label>
+          <textarea name="description" rows="3" class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        </div>
+        <div class="flex items-center">
+          <label class="mr-4 font-medium text-gray-700">Trạng thái</label>
+          <select name="status" class="border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="active">Bật</option>
+            <option value="inactive">Tắt</option>
+          </select>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" id="cancelBtn" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Hủy</button>
+          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Lưu</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Modal handling
+    const openBtn = document.getElementById('openModalBtn');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const overlay = document.getElementById('modalOverlay');
+    const form = document.getElementById('scenarioForm');
+
+    openBtn.addEventListener('click', () => overlay.classList.remove('hidden'));
+    closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+    cancelBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+
+    // Mock form submit
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      // In real app, send data to backend, then refresh list.
+      alert('Kịch bản đã được lưu (mock).');
+      overlay.classList.add('hidden');
+      form.reset();
+    });
+
+    // Edit & Delete button placeholders
+    document.querySelectorAll('.editBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        alert('Mở modal chỉnh sửa (mock) cho ID: ' + btn.dataset.id);
+      });
+    });
+    document.querySelectorAll('.deleteBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Bạn có chắc muốn xóa kịch bản này?')) {
+          alert('Đã xóa (mock) ID: ' + btn.dataset.id);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
