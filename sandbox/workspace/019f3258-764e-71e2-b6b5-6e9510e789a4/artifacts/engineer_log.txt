@@ -1,0 +1,1 @@
+OpenHands error: Conversation run failed for id=eef67d66-86af-4afb-a958-cefc5e359805: litellm.RateLimitError: RateLimitError: Nvidia_nimException - Error code: 429 - {'status': 429, 'title': 'Too Many Requests'}

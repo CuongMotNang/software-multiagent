@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Form Nhiệm vụ - Personal Task Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      font-family: 'Inter', sans-serif;
+    }
+    
+    .char-counter {
+      transition: color 0.2s ease;
+    }
+    
+    .char-counter.warning {
+      color: #ef4444;
+    }
+    
+    .char-counter.near-limit {
+      color: #f59e0b;
+    }
+    
+    .input-field {
+      transition: all 0.2s ease;
+    }
+    
+    .input-field:focus {
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      transition: all 0.2s ease;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+    
+    .btn-secondary {
+      transition: all 0.2s ease;
+    }
+    
+    .btn-secondary:hover {
+      background-color: #f3f4f6;
+    }
+    
+    .error-message {
+      animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .form-card {
+      animation: fadeIn 0.4s ease;
+    }
+    
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .status-indicator {
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.7;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-14">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+          </div>
+          <h1 class="text-lg font-semibold text-gray-900">Personal Task Manager</h1>
+        </div>
+        <a href="01_task_list.html" class="btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 rounded-lg">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+          <span class="hidden sm:inline">Đóng</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Form Card -->
+    <div class="form-card bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <!-- Form Header -->
+      <div class="px-6 py-5 border-b border-gray-100">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center">
+            <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900">Tạo nhiệm vụ mới</h2>
+            <p class="text-sm text-gray-500 mt-0.5">Nhập thông tin để thêm việc cần làm</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Form Body -->
+      <form id="taskForm" class="px-6 py-5 space-y-5">
+        <!-- Title Field -->
+        <div>
+          <label for="taskTitle" class="block text-sm font-medium text-gray-700 mb-1.5">
+            Tiêu đề <span class="text-red-500">*</span>
+          </label>
+          <div class="relative">
+            <input
+              type="text"
+              id="taskTitle"
+              name="title"
+              maxlength="200"
+              placeholder="Nhập tiêu đề nhiệm vụ..."
+              class="input-field w-full px-4 py-3 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm"
+            >
+            <div class="absolute right-3 top-1/2 -translate-y-1/2">
+              <span id="titleCounter" class="char-counter text-xs text-gray-400">0/200</span>
+            </div>
+          </div>
+          <!-- Error Message -->
+          <div id="titleError" class="hidden error-message mt-1.5 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-sm text-red-600">Tiêu đề không được để trống</span>
+          </div>
+          <p class="mt-1.5 text-xs text-gray-500">Tiêu đề ngắn gọn, dễ nhớ để dễ dàng nhận diện nhiệm vụ</p>
+        </div>
+
+        <!-- Description Field -->
+        <div>
+          <label for="taskDesc" class="block text-sm font-medium text-gray-700 mb-1.5">
+            Mô tả <span class="text-gray-400 font-normal">(tùy chọn)</span>
+          </label>
+          <div class="relative">
+            <textarea
+              id="taskDesc"
+              name="description"
+              rows="4"
+              maxlength="1000"
+              placeholder="Thêm mô tả chi tiết cho nhiệm vụ..."
+              class="input-field w-full px-4 py-3 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm resize-none"
+            ></textarea>
+            <div class="absolute right-3 bottom-3">
+              <span id="descCounter" class="char-counter text-xs text-gray-400">0/1000</span>
+            </div>
+          </div>
+          <p class="mt-1.5 text-xs text-gray-500">Mô tả giúp bạn nhớ rõ hơn về nhiệm vụ cần thực hiện</p>
+        </div>
+
+        <!-- Status Preview (for edit mode) -->
+        <div id="statusSection" class="hidden">
+          <label class="block text-sm font-medium text-gray-700 mb-1.5">Trạng thái</label>
+          <div class="flex items-center gap-2 px-4 py-3 bg-gray-50 rounded-lg border border-gray-200">
+            <span id="statusIndicator" class="status-indicator w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
+            <span id="statusText" class="text-sm text-gray-700">Chưa hoàn thành</span>
+          </div>
+        </div>
+
+        <!-- Created Info (for edit mode) -->
+        <div id="createdInfo" class="hidden">
+          <div class="flex items-center gap-4 text-xs text-gray-500">
+            <span>Tạo lúc: <span id="createdAt">--</span></span>
+            <span>Cập nhật: <span id="updatedAt">--</span></span>
+          </div>
+        </div>
+      </form>
+
+      <!-- Form Footer -->
+      <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <button
+          type="button"
+          onclick="window.location.href='01_task_list.html'"
+          class="btn-secondary order-2 sm:order-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+          Hủy bỏ
+        </button>
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 order-1 sm:order-2">
+          <button
+            type="button"
+            id="saveDraftBtn"
+            class="btn-secondary inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            Lưu nháp
+          </button>
+          <button
+            type="submit"
+            form="taskForm"
+            id="submitBtn"
+            class="btn-primary inline-flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-medium text-white rounded-lg"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Tạo nhiệm vụ
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tips Section -->
+    <div class="mt-6 bg-blue-50 rounded-xl p-4 border border-blue-100">
+      <div class="flex items-start gap-3">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-sm font-medium text-blue-900">Mẹo hay</h3>
+          <ul class="mt-1.5 space-y-1 text-sm text-blue-800">
+            <li class="flex items-center gap-2">
+              <span class="w-1 h-1 bg-blue-400 rounded-full flex-shrink-0"></span>
+              Tiêu đề nên bắt đầu bằng động từ: "Viết", "Gọi điện", "Mua"...
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="w-1 h-1 bg-blue-400 rounded-full flex-shrink-0"></span>
+              Thêm ngày giờ cụ thể trong mô tả nếu cần
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="w-1 h-1 bg-blue-400 rounded-full flex-shrink-0"></span>
+              Nhiệm vụ càng nhỏ, càng dễ hoàn thành
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Success Toast (hidden by default) -->
+  <div id="successToast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden">
+    <div class="bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
+      <div class="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+        <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
+      <span class="text-sm font-medium" id="toastMessage">Nhiệm vụ đã được tạo thành công!</span>
+    </div>
+  </div>
+
+  <script>
+    // DOM Elements
+    const titleInput = document.getElementById('taskTitle');
+    const descInput = document.getElementById('taskDesc');
+    const titleCounter = document.getElementById('titleCounter');
+    const descCounter = document.getElementById('descCounter');
+    const titleError = document.getElementById('titleError');
+    const form = document.getElementById('taskForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const successToast = document.getElementById('successToast');
+
+    // Character counting
+    function updateCounter(input, counter, max) {
+      const current = input.value.length;
+      counter.textContent = `${current}/${max}`;
+      
+      counter.classList.remove('warning', 'near-limit');
+      if (current >= max) {
+        counter.classList.add('warning');
+      } else if (current >= max * 0.8) {
+        counter.classList.add('near-limit');
+      }
+    }
+
+    // Title input events
+    titleInput.addEventListener('input', function() {
+      updateCounter(this, titleCounter, 200);
+      if (this.value.trim().length > 0) {
+        titleError.classList.add('hidden');
+        this.classList.remove('border-red-500', 'focus:border-red-500', 'focus:ring-red-500');
+        this.classList.add('focus:border-blue-500', 'focus:ring-blue-500');
+      }
+    });
+
+    // Validate on blur
+    titleInput.addEventListener('blur', function() {
+      const trimmed = this.value.trim();
+      if (trimmed.length === 0 && this.value.length > 0) {
+        // Only spaces
+        showError();
+      }
+    });
+
+    // Description input events
+    descInput.addEventListener('input', function() {
+      updateCounter(this, descCounter, 1000);
+    });
+
+    // Show error
+    function showError() {
+      titleError.classList.remove('hidden');
+      titleInput.classList.add('border-red-500', 'focus:border-red-500', 'focus:ring-red-500');
+      titleInput.classList.remove('focus:border-blue-500', 'focus:ring-blue-500');
+    }
+
+    // Form submit
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const title = titleInput

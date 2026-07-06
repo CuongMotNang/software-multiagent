@@ -5,11 +5,12 @@ import "./App.css";
 import { ThreadDashboard } from "./components/ThreadDashboard";
 import { PipelineGraph } from "./components/PipelineGraph";
 import { MockupVersionHistory } from "./components/MockupVersionHistory";
+import { RepoBrowser } from "./components/RepoBrowser";
 
 const client = new Client({ apiUrl: "http://localhost:2024" });
 const GRAPH_ID = "SoftwareFactory";
 
-type ActiveTab = "prd" | "design" | "mockup";
+type ActiveTab = "prd" | "design" | "mockup" | "files";
 
 class ErrorBoundary extends Component<
   { children: React.ReactNode },
@@ -109,7 +110,7 @@ function ReviewApp() {
       : "");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const gateHistory: Array<Record<string, any>> = state.gate_history ?? [];
-  const hasStarted = !!thread;
+  const hasStarted = !!threadId;
 
   // Auto-switch tab when gate is detected
   useEffect(() => {
@@ -296,8 +297,8 @@ function ReviewApp() {
     );
   };
 
-  const renderGatePanel = () => {
-    if (!interrupted || !currentGate) return null;
+  const renderTabs = () => {
+    if (!hasStarted) return null;
     const gateLabel: Record<string, string> = {
       gate_prd: "Gate PRD",
       gate_design: "Gate Design",
@@ -310,31 +311,35 @@ function ReviewApp() {
     };
 
     return (
-      <div
-        style={{
-          background: "#fffbe6",
-          border: "2px solid #faad14",
-          borderRadius: 8,
-          padding: 20,
-          marginBottom: 20,
-        }}
-      >
-        <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
-          ⏸ {gateLabel[currentGate] ?? currentGate} — Awaiting Review
-        </h3>
-        <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
-          {gateDescription[currentGate] ?? "Review the output before continuing."}
-        </p>
+      <>
+        {interrupted && currentGate && (
+          <div
+            style={{
+              background: "#fffbe6",
+              border: "2px solid #faad14",
+              borderRadius: 8,
+              padding: 20,
+              marginBottom: 20,
+            }}
+          >
+            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+              ⏸ {gateLabel[currentGate] ?? currentGate} — Awaiting Review
+            </h3>
+            <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
+              {gateDescription[currentGate] ?? "Review the output before continuing."}
+            </p>
 
-        {pendingRole && (
-          <p style={{ fontSize: 12, color: "#854d0e", marginBottom: 12 }}>
-            👤 Role required:{" "}
-            <strong>{pendingRole === "ba" ? "BA" : "Dev"}</strong>
-          </p>
+            {pendingRole && (
+              <p style={{ fontSize: 12, color: "#854d0e", marginBottom: 12 }}>
+                👤 Role required:{" "}
+                <strong>{pendingRole === "ba" ? "BA" : "Dev"}</strong>
+              </p>
+            )}
+          </div>
         )}
 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {(["prd", "design", "mockup"] as ActiveTab[]).map((tab) => (
+          {(["prd", "design", "mockup", "files"] as ActiveTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -348,64 +353,72 @@ function ReviewApp() {
                 fontWeight: activeTab === tab ? 600 : 400,
               }}
             >
-              {tab === "prd" ? "📄 PRD" : tab === "design" ? "🎨 Design" : "🖥 Mockup"}
+              {tab === "prd" ? "📄 PRD" : tab === "design" ? "🎨 Design" : tab === "mockup" ? "🖥 Mockup" : "📁 Files"}
             </button>
           ))}
         </div>
 
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: 6,
-            border: "1px solid #e8e8e8",
-            padding: 16,
-            marginBottom: 16,
-            maxHeight: 400,
-            overflow: "auto",
-          }}
-        >
-          {activeTab === "prd" && (
-            <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, margin: 0 }}>
-              {state.prd_markdown ?? state.prd ?? "PRD content not available yet."}
-            </pre>
-          )}
-          {activeTab === "design" && (
-            <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, margin: 0 }}>
-              {state.design_markdown ?? state.design ?? "Design content not available yet."}
-            </pre>
-          )}
-          {activeTab === "mockup" &&
-            (state.mockup_screenshots && state.mockup_screenshots.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {state.mockup_screenshots.map((imgPath: string, i: number) => (
-                  <div key={i}>
-                    <p style={{ fontSize: 12, color: "#999", marginBottom: 4 }}>
-                      📸 Màn hình {i + 1}: {imgPath.split("/").pop()}
-                    </p>
-                    <img
-                      src={`/artifacts/${imgPath}`}
-                      alt={`Screenshot ${i + 1}`}
-                      style={{
-                        width: "100%",
-                        border: "1px solid #e8e8e8",
-                        borderRadius: 6,
-                        display: "block",
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : state.mockup_html ? (
-              <iframe
-                sandbox="allow-scripts"
-                srcDoc={state.mockup_html}
-                style={{ width: "100%", height: 350, border: "none", display: "block" }}
-                title="Mockup Preview"
-              />
-            ) : (
-              <p style={{ color: "#999", fontSize: 13 }}>Mockup not available yet.</p>
-            ))}
-        </div>
+        {activeTab === "files" && (
+          <div style={{ marginBottom: 16 }}>
+            <RepoBrowser threadId={threadId} />
+          </div>
+        )}
+
+        {activeTab !== "files" && (
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 6,
+              border: "1px solid #e8e8e8",
+              padding: 16,
+              marginBottom: 16,
+              maxHeight: 400,
+              overflow: "auto",
+            }}
+          >
+            {activeTab === "prd" && (
+              <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, margin: 0 }}>
+                {state.prd_markdown ?? state.prd ?? "PRD content not available yet."}
+              </pre>
+            )}
+            {activeTab === "design" && (
+              <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, margin: 0 }}>
+                {state.design_markdown ?? state.design ?? "Design content not available yet."}
+              </pre>
+            )}
+            {activeTab === "mockup" &&
+              (state.mockup_screenshots && state.mockup_screenshots.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  {state.mockup_screenshots.map((imgPath: string, i: number) => (
+                    <div key={i}>
+                      <p style={{ fontSize: 12, color: "#999", marginBottom: 4 }}>
+                        📸 Màn hình {i + 1}: {imgPath.split("/").pop()}
+                      </p>
+                      <img
+                        src={`/artifacts/${imgPath}`}
+                        alt={`Screenshot ${i + 1}`}
+                        style={{
+                          width: "100%",
+                          border: "1px solid #e8e8e8",
+                          borderRadius: 6,
+                          display: "block",
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : state.mockup_html ? (
+                <iframe
+                  sandbox="allow-scripts"
+                  srcDoc={state.mockup_html}
+                  style={{ width: "100%", height: 350, border: "none", display: "block" }}
+                  title="Mockup Preview"
+                />
+              ) : (
+                <p style={{ color: "#999", fontSize: 13 }}>Mockup not available yet.</p>
+              ))}
+          </div>
+        )}
 
         {activeTab === "mockup" && (
           <MockupVersionHistory
@@ -415,59 +428,61 @@ function ReviewApp() {
           />
         )}
 
-        <div style={{ marginTop: 16 }}>
-          <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="Optional feedback..."
-            style={{
-              width: "100%",
-              minHeight: 60,
-              padding: 8,
-              borderRadius: 4,
-              border: "1px solid #d9d9d9",
-              fontSize: 13,
-              resize: "vertical",
-              marginBottom: 12,
-              boxSizing: "border-box",
-            }}
-          />
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              onClick={() => handleGateSubmit("approve")}
-              disabled={isRunning}
+        {interrupted && currentGate && (
+          <div style={{ marginTop: 16 }}>
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Optional feedback..."
               style={{
-                padding: "8px 20px",
+                width: "100%",
+                minHeight: 60,
+                padding: 8,
                 borderRadius: 4,
-                border: "none",
-                background: isRunning ? "#d9d9d9" : "#52c41a",
-                color: "#fff",
-                cursor: isRunning ? "not-allowed" : "pointer",
-                fontWeight: 600,
-                fontSize: 14,
+                border: "1px solid #d9d9d9",
+                fontSize: 13,
+                resize: "vertical",
+                marginBottom: 12,
+                boxSizing: "border-box",
               }}
-            >
-              ✅ Approve
-            </button>
-            <button
-              onClick={() => handleGateSubmit("reject")}
-              disabled={isRunning}
-              style={{
-                padding: "8px 20px",
-                borderRadius: 4,
-                border: "none",
-                background: isRunning ? "#d9d9d9" : "#ff4d4f",
-                color: "#fff",
-                cursor: isRunning ? "not-allowed" : "pointer",
-                fontWeight: 600,
-                fontSize: 14,
-              }}
-            >
-              ❌ Reject
-            </button>
+            />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => handleGateSubmit("approve")}
+                disabled={isRunning}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: 4,
+                  border: "none",
+                  background: isRunning ? "#d9d9d9" : "#52c41a",
+                  color: "#fff",
+                  cursor: isRunning ? "not-allowed" : "pointer",
+                  fontWeight: 600,
+                  fontSize: 14,
+                }}
+              >
+                ✅ Approve
+              </button>
+              <button
+                onClick={() => handleGateSubmit("reject")}
+                disabled={isRunning}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: 4,
+                  border: "none",
+                  background: isRunning ? "#d9d9d9" : "#ff4d4f",
+                  color: "#fff",
+                  cursor: isRunning ? "not-allowed" : "pointer",
+                  fontWeight: 600,
+                  fontSize: 14,
+                }}
+              >
+                ❌ Reject
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        )}
+      </>
     );
   };
 
@@ -626,6 +641,7 @@ function ReviewApp() {
           nextNodes={nextNodes}
           isRunning={isRunning}
           currentNode={currentNode}
+          nodeStats={state.node_stats}
         />
       </div>
 
@@ -637,7 +653,7 @@ function ReviewApp() {
         {renderError()}
         {renderStartPanel()}
         {renderRunningIndicator()}
-        {renderGatePanel()}
+        {renderTabs()}
         {renderGateHistory()}
         {renderDebugState()}
       </div>

@@ -1,6 +1,17 @@
 """Base LLM interface — tất cả provider đều implement class này."""
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Optional
+
+
+@dataclass
+class LLMResponse:
+    """Response wrapper cho LLM call — chứa content + usage metadata."""
+    content: Optional[str]
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    model: str = ""
 
 
 class BaseLLM(ABC):
@@ -13,8 +24,8 @@ class BaseLLM(ABC):
         user_prompt: str,
         temperature: float = 0.3,
         max_tokens: int = 4096,
-    ) -> Optional[str]:
-        """Gọi LLM và trả về text response.
+    ) -> "LLMResponse":
+        """Gọi LLM và trả về LLMResponse.
         
         Args:
             system_prompt: System prompt cho model
@@ -23,6 +34,6 @@ class BaseLLM(ABC):
             max_tokens: Số token tối đa trong response
             
         Returns:
-            String response hoặc None nếu lỗi
+            LLMResponse chứa content + token usage + model info
         """
         ...

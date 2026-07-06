@@ -5,10 +5,21 @@ UINode: Generate HTML mockup screens & render to PNG.
 import re
 from pathlib import Path
 from typing import Any
+from datetime import datetime
 
 from langchain_core.runnables import RunnableConfig
 
-from graph.state import SoftwareFactoryState
+from graph.state import SoftwareFactoryState, MAX_HISTORY_VERSIONS
+from graph.llm import llm_factory, LLMResponse
+from graph.stats_utils import count_rejects
+
+# Mapping node_name → gate_name để tính reject_count
+_NODE_GATES = {
+    "ba": None,
+    "prd": "gate_prd",
+    "design": "gate_design",
+    "ui": "gate_mockup",
+}
 
 CUR_DIR = Path(__file__).parent.parent.resolve()
 PROMPT_DIR = CUR_DIR / ".." / "prompts"
@@ -48,19 +59,17 @@ def _read_prompt(sub: str, version: str | None = None) -> str:
     return p.read_text(encoding="utf-8") if p.exists() else ""
 
 
-def _ask_llm(prompt: str, *, max_tokens=20000, **kwargs) -> str:
+def _ask_llm(prompt: str, *, max_tokens=20000, **kwargs) -> LLMResponse:
     import os
-    from graph.llm import llm_factory
-
     provider_name = os.getenv("UI_PROVIDER", None)
     llm = llm_factory(provider_name)
-    result = llm.call(
+    llm_response = llm.call(
         system_prompt="",
         user_prompt=prompt,
         temperature=kwargs.get("temperature", 0.3),
         max_tokens=max_tokens,
     )
-    return result or ""
+    return llm_response
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +132,7 @@ def _list_screens_via_llm(state: SoftwareFactoryState) -> list[tuple[str, str]]:
 
 def _generate_screen_html(screen_slug: str, screen_label: str,
                             design: str, prd: str, requirements: str,
-                            version: int) -> str:
+                            version: int, llm_responses: list[LLMResponse]) -> str:
     base_prompt = _read_prompt("ui_system.txt")
     screen_prompt = _read_prompt("ui_screen_detail.txt", version=f"v{version}")
     if not screen_prompt:
@@ -156,7 +165,9 @@ KHÔNG tạo thêm màn hình nào khác.
 CHỈ trả về đúng 1 khối HTML hoàn chỉnh, bắt đầu bằng <!DOCTYPE html>, không có text giải thích nào khác.
 """
     prompt = f"{base_prompt}\n\n{user_msg}"
-    html = _ask_llm(prompt, max_tokens=4096)
+    llm_response = _ask_llm(prompt, max_tokens=4096)
+    llm_responses.append(llm_response)  # Lưu response để cộng dồn token
+    html = llm_response.content or ""
     html = _extract_single_html(html)
     return html
 
@@ -254,12 +265,14 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
 
     # ── generate HTML + save to both sandbox & local ──
     html_paths: list[Path] = []
+    llm_responses: list[LLMResponse] = []  # Lưu tất cả LLM responses để cộng dồn token
+    
     for slug, label in screens:
         print(f"  → generating {slug} ({label})...")
         try:
-            html = _generate_screen_html(slug, label, design, prd, requirements, 1)
-            _save_html(html, html_dir, slug)               # local
-            path = _save_html(html, sandbox_path, slug)    # sandbox served
+            html = _generate_screen_html(slug, label, design, prd, requirements, 1, llm_responses)
+            _save_html(html, html_dir, slug)
+            path = _save_html(html, sandbox_path, slug)
             html_paths.append(path)
             print(f"  ✓ HTML saved: {path.name}")
         except Exception as e:
@@ -273,16 +286,46 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
     except Exception as e:
         print(f"  ⚠️ PNG capture failed: {e}")
 
-    # ━━ return paths for frontend: /artifacts/{thread_id}/mockup_versions/v1/01_screen.png ━━
+    # ━━ return paths for frontend ━━
     mockup_screenshots: list[str] = [
         f"/artifacts/{thread_id}/mockup_versions/v1/{p.stem}.png"
         for p in png_paths
     ]
 
+    # Gộp tất cả HTML thành nội dung mockup hoàn chỉnh
+    all_html_content = "\n\n".join(
+        f"<!-- Screen: {slug} -->" for slug, _ in screens
+    ) + "\n\n" + "\n\n".join(
+        path.read_text(encoding="utf-8") for path in html_paths if path.exists()
+    )
+
+    # --- Cập nhật node_stats ---
+    node_name = "ui"
+    gate_name = _NODE_GATES.get(node_name)
+    total_tokens = sum(resp.total_tokens for resp in llm_responses)
+    model = llm_responses[0].model if llm_responses else ""
+
+    stats = dict(state.node_stats)
+    existing = stats.get(node_name, {})
+    stats[node_name] = {
+        "reject_count": count_rejects(state.gate_history, gate_name) if gate_name else 0,
+        "tokens_used": existing.get("tokens_used", 0) + total_tokens,
+        "model": model,
+    }
+
+    # --- Cập nhật content_history ---
+    all_history = dict(state.content_history)
+    history = list(all_history.get(node_name, []))
+    history.insert(0, {"content": all_html_content, "timestamp": datetime.now().isoformat()})
+    history = history[:MAX_HISTORY_VERSIONS]
+    all_history[node_name] = history
+
     return dict(
         mockup_screenshots=mockup_screenshots,
         _mockup_dir=str(mockup_dir),
         _version_dir=str(sandbox_path),
+        node_stats=stats,
+        content_history=all_history,
     )
 
 # Alias để GraphBuilder dùng

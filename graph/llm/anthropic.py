@@ -1,26 +1,10 @@
-"""Anthropic Claude provider — placeholder, sẽ implement sau."""
+"""Anthropic LLM provider — placeholder, chưa implement."""
 from typing import Optional
-from graph.llm.base import BaseLLM
+from graph.llm.base import BaseLLM, LLMResponse
 
 
 class AnthropicLLM(BaseLLM):
-    """Gọi Anthropic Claude API.
-    
-    TODO: Implement khi có Claude API key.
-    """
+    """Anthropic Claude LLM — chưa implement."""
 
-    def __init__(self):
-        raise NotImplementedError(
-            "Anthropic provider chưa được implement. "
-            "Cài đặt: pip install anthropic, "
-            "thêm ANTHROPIC_API_KEY vào .env"
-        )
-
-    def call(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float = 0.3,
-        max_tokens: int = 4096,
-    ) -> Optional[str]:
+    def call(self, system_prompt: str, user_prompt: str, temperature: float = 0.3, max_tokens: int = 4096) -> LLMResponse:
         raise NotImplementedError("AnthropicLLM.call() chưa được implement")

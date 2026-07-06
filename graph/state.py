@@ -1,8 +1,12 @@
 """SoftwareFactory State — Pydantic model cho toàn bộ pipeline."""
+import os
 from datetime import datetime                              # ← MỚI
 import operator
 from typing import Annotated, Literal, Optional                         # ← sửa
 from pydantic import BaseModel, Field
+
+
+MAX_HISTORY_VERSIONS = int(os.getenv("MAX_HISTORY_VERSIONS", "5"))
 
 
 class SoftwareFactoryState(BaseModel):
@@ -99,4 +103,13 @@ class SoftwareFactoryState(BaseModel):
     )
     error: str = Field(
         "", description="Lỗi nếu có"
+    )
+    # --- Observability ---
+    node_stats: dict[str, dict] = Field(
+        default_factory=dict,
+        description="Theo node -> {reject_count, tokens_used, model}"
+    )
+    content_history: dict[str, list[dict]] = Field(
+        default_factory=dict,
+        description="Theo node -> list N bản gần nhất [{content, timestamp}]"
     )

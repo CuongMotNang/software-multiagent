@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Task Manager</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Banner cảnh báo khi localStorage không khả dụng -->
+        <div id="storage-warning" class="storage-warning hidden" role="alert">
+            <span>⚠️ Dữ liệu sẽ không được lưu khi đóng trình duyệt.</span>
+            <button id="close-warning" aria-label="Đóng cảnh báo">&times;</button>
+        </div>
+
+        <!-- Header -->
+        <header class="app-header">
+            <h1>📋 Personal Task Manager</h1>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Task List Screen -->
+            <section id="task-list-screen" class="screen">
+                <!-- Filter Tabs -->
+                <div class="filter-tabs" role="tablist" aria-label="Lọc nhiệm vụ">
+                    <button class="filter-tab active" data-filter="all" role="tab" aria-selected="true" tabindex="0">
+                        Tất cả
+                    </button>
+                    <button class="filter-tab" data-filter="pending" role="tab" aria-selected="false" tabindex="-1">
+                        Chưa hoàn thành
+                    </button>
+                    <button class="filter-tab" data-filter="completed" role="tab" aria-selected="false" tabindex="-1">
+                        Đã hoàn thành
+                    </button>
+                </div>
+
+                <!-- Task Count -->
+                <div class="task-count" id="task-count"></div>
+
+                <!-- Task List -->
+                <ul id="task-list" class="task-list" role="list" aria-label="Danh sách nhiệm vụ">
+                    <!-- Tasks will be rendered here -->
+                </ul>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="empty-state hidden">
+                    <div class="empty-illustration" aria-hidden="true">📝</div>
+                    <h2>Chưa có nhiệm vụ nào</h2>
+                    <p>Nhấn nút bên dưới để thêm việc cần làm đầu tiên</p>
+                </div>
+
+                <!-- Add Task Button -->
+                <button id="add-task-btn" class="fab" aria-label="Thêm nhiệm vụ mới">
+                    <span aria-hidden="true">+</span>
+                </button>
+            </section>
+
+            <!-- Task Form Screen (Create/Edit) -->
+            <section id="task-form-screen" class="screen hidden">
+                <div class="form-header">
+                    <button id="back-btn" class="icon-btn" aria-label="Quay lại">
+                        ←
+                    </button>
+                    <h2 id="form-title">Thêm việc mới</h2>
+                </div>
+
+                <form id="task-form" class="task-form" novalidate>
+                    <div class="form-group">
+                        <label for="task-title">Tiêu đề <span class="required">*</span></label>
+                        <input
+                            type="text"
+                            id="task-title"
+                            name="title"
+                            maxlength="200"
+                            placeholder="Nhập tiêu đề nhiệm vụ..."
+                            required
+                            aria-describedby="title-error title-counter"
+                        >
+                        <div class="input-meta">
+                            <span id="title-error" class="error-message" role="alert" aria-live="polite"></span>
+                            <span id="title-counter" class="char-counter">0/200</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="task-description">Mô tả</label>
+                        <textarea
+                            id="task-description"
+                            name="description"
+                            maxlength="1000"
+                            placeholder="Nhập mô tả chi tiết (tùy chọn)..."
+                            rows="4"
+                            aria-describedby="desc-counter"
+                        ></textarea>
+                        <div class="input-meta">
+                            <span></span>
+                            <span id="desc-counter" class="char-counter">0/1000</span>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="cancel-btn" class="btn btn-secondary">Hủy</button>
+                        <button type="submit" id="save-btn" class="btn btn-primary">Lưu</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Task Detail Screen -->
+            <section id="task-detail-screen" class="screen hidden">
+                <div class="detail-header">
+                    <button id="detail-back-btn" class="icon-btn" aria-label="Quay lại">
+                        ←
+                    </button>
+                    <h2>Chi tiết nhiệm vụ</h2>
+                </div>
+
+                <div id="task-detail-content" class="task-detail-content">
+                    <!-- Detail content rendered here -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Confirm Delete Modal -->
+        <div id="delete-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+            <div class="modal-overlay"></div>
+            <div class="modal-content">
+                <h3 id="delete-modal-title">Xác nhận xóa</h3>
+                <p>Bạn có chắc chắn muốn xóa nhiệm vụ này? Hành động này không thể hoàn tác.</p>
+                <div class="modal-actions">
+                    <button id="cancel-delete-btn" class="btn btn-secondary">Hủy</button>
+                    <button id="confirm-delete-btn" class="btn btn-danger">Xóa</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Limit Reached Modal -->
+        <div id="limit-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="limit-modal-title">
+            <div class="modal-overlay"></div>
+            <div class="modal-content">
+                <h3 id="limit-modal-title">Đã đạt giới hạn</h3>
+                <p id="limit-message">Bạn đã đạt giới hạn 1000 nhiệm vụ. Vui lòng xóa bớt trước khi tạo mới.</p>
+                <div class="modal-actions">
+                    <button id="limit-ok-btn" class="btn btn-primary">Đã hiểu</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

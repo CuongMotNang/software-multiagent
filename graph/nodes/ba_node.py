@@ -1,92 +1,91 @@
-"""Node BA — Business Analyst: phân tích yêu cầu thô → PRD draft."""
-import os
-from typing import Dict, Any
+"""BA Node — phân tích yêu cầu + sinh PRD Draft."""
+
 from langchain_core.runnables import RunnableConfig
-from graph.state import SoftwareFactoryState
+
 from graph.llm import llm_factory
-from graph.artifact_store import save_prd, read_prd
-from graph.prompt_loader import load_prompt
+from graph.state import SoftwareFactoryState, MAX_HISTORY_VERSIONS
 
 
+# Mapping node_name → gate_name để tính reject_count (None = không có gate ngay sau ba)
+_NODE_GATES = {
+    "ba": None,       # Ba không có gate ngay sau nó
+    "prd": "gate_prd",
+    "design": "gate_design",
+    "ui": "gate_mockup",
+}
 
-def ba_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) -> Dict[str, Any]:
-    """Node BA: Phân tích raw_requirements → prd_draft.
-    
-    Args:
-        state: SoftwareFactoryState hiện tại
-        config: LangGraph configurable chứa thread_id (được inject tự động)
-        
-    Returns:
-        Dict chứa prd_draft đã được LLM phân tích
-    """
-    # Lấy thread_id từ config (LangGraph inject khi hàm có parameter config)
-    # RunnableConfig có cấu trúc {"configurable": {"thread_id": "...", ...}}
-    # KHÔNG dùng isinstance(config, dict) vì RunnableConfig là TypedDict luôn là dict
-    thread_id = "default"
-    if config:
-        configurable = config.get("configurable", {}) or {}
-        thread_id = configurable.get("thread_id", "default")
-    
-    raw_req = state.raw_requirements.strip()
-    
-    if not raw_req:
-        return {
-            "prd_draft": "## LỖI: Không có yêu cầu đầu vào. Vui lòng nhập yêu cầu.",
-            "status": "failed",
-            "error": "raw_requirements is empty",
-        }
-    
-    # Kiểm tra phản hồi chỉnh sửa gần nhất cho gate_prd từ gate_history
-    feedback = ""
-    if state.gate_history:
-        prd_gates = [h for h in state.gate_history if h.get("gate") == "gate_prd"]
-        if prd_gates:
-            last_gate = prd_gates[-1]
-            if last_gate.get("decision") in ["edit", "reject"]:
-                feedback = last_gate.get("note", "")
-    
-    # Lấy LLM provider (mặc định nvidia, có thể override qua env BA_PROVIDER)
-    provider_name = os.getenv("BA_PROVIDER", None)
-    llm = llm_factory(provider_name)
-    
-    system_prompt = load_prompt("ba_system")
-    user_prompt = f"## YÊU CẦU KHÁCH HÀNG\n\n{raw_req}\n\n"
-    if feedback:
-        user_prompt += (
-            f"## PHẢN HỒI YÊU CẦU CHỈNH SỬA TỪ BẢN DUYỆT TRƯỚC\n"
-            f"Người duyệt đã yêu cầu chỉnh sửa với ý kiến sau:\n"
-            f"\"{feedback}\"\n\n"
-            f"Hãy cập nhật lại bản phân tích yêu cầu (prd_draft) để đáp ứng phản hồi trên."
-        )
-    else:
-        user_prompt += f"Hãy phân tích yêu cầu trên theo đúng cấu trúc đã quy định."
-    
+
+def ba_node(state: SoftwareFactoryState, config: RunnableConfig | None = None):
+    """Node phân tích nghiệp vụ: nhận raw_requirements → sinh prd_draft."""
+    print("[BA Node] 📝 Phân tích yêu cầu...")
+
+    state, updates = _ba_node_logic(state)
+    return updates
+
+
+def _ba_node_logic(state: SoftwareFactoryState):
+    """Logic chính của BA Node — trả về (state, updates)."""
+    from graph.stats_utils import count_rejects
+
+    updates = {}
+
+    # Lấy nội dung yêu cầu
+    requirements = state.raw_requirements or ""
+
+    # Prompt chi tiết cho BA
+    system_prompt = "Bạn là Business Analyst chuyên nghiệp. Phân tích yêu cầu và tạo PRD dự thảo."
+    user_prompt = f"""Phân tích yêu cầu sau và tạo PRD dự thảo:
+
+Yêu cầu:
+{requirements}
+
+Hãy đảm bảo PRD bao gồm:
+1. Mô tả tổng quan sản phẩm
+2. Các stakeholders và personas
+3. Use cases và user stories
+4. Requirements (functional và non-functional)
+5. Acceptance criteria
+6. Timeline và milestones
+"""
+
     # Gọi LLM
-    result = llm.call(
+    llm = llm_factory("nvidia")
+    llm_response = llm.call(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.3,
-        max_tokens=20000,
     )
-    
-    if result is None:
-        return {
-            "prd_draft": "## LỖI: LLM không trả về kết quả. Vui lòng thử lại.",
-            "status": "failed",
-            "error": "LLM returned None",
-        }
-    
-    # Lưu kết quả vào Artifact Store (dùng thread_id từ config)
-    save_prd(thread_id, result)
-    
-    return {
-        "prd_draft": result,
-        "status": "running",
-        "gate_decision": None,
-        "current_gate": "",
-        "pending_gate_role": "",
+    result = llm_response.content or ""
+
+    # Cập nhật prd_draft
+    updates["prd_draft"] = result
+
+    # --- Cập nhật node_stats ---
+    node_name = "ba"
+    gate_name = _NODE_GATES.get(node_name)
+    reject_count = count_rejects(state.gate_history, gate_name) if gate_name else 0
+
+    stats = dict(state.node_stats)
+    existing = stats.get(node_name, {})
+    stats[node_name] = {
+        "reject_count": reject_count,
+        "tokens_used": existing.get("tokens_used", 0) + llm_response.total_tokens,
+        "model": llm_response.model,
     }
+    updates["node_stats"] = stats
+
+    # --- Cập nhật content_history ---
+    all_history = dict(state.content_history)
+    history = list(all_history.get(node_name, []))
+    from datetime import datetime
+    history.insert(0, {"content": result, "timestamp": datetime.now().isoformat()})
+    history = history[:MAX_HISTORY_VERSIONS]
+    all_history[node_name] = history
+    updates["content_history"] = all_history
+
+    print(f"[BA Node] ✅ Đã tạo PRD dự thảo ({len(result)} chars)")
+    return state, updates
 
 
-# Alias để dùng trong graph builder
+# Alias để GraphBuilder dùng
 BA_NODE = ba_node

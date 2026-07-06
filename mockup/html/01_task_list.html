@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Danh sách nhiệm vụ - Personal Task Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .task-checkbox:checked + div {
+      text-decoration: line-through;
+      color: #9ca3af;
+    }
+    .task-checkbox:checked + div .task-title {
+      color: #9ca3af;
+    }
+    .fade-in {
+      animation: fadeIn 0.3s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .slide-in {
+      animation: slideIn 0.3s ease-out;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <header class="bg-white shadow-sm sticky top-0 z-40">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-14">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+          </div>
+          <h1 class="text-lg font-semibold text-gray-900">Personal Task Manager</h1>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-500 hidden sm:inline">3/5 hoàn thành</span>
+          <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
+            <span class="text-xs font-medium text-indigo-700">JD</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Progress Bar -->
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium text-gray-700">Tiến độ hôm nay</span>
+        <span class="text-sm font-medium text-indigo-600">60%</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-2.5">
+        <div class="bg-indigo-600 h-2.5 rounded-full transition-all duration-500" style="width: 60%"></div>
+      </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
+      <button class="filter-btn active px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white whitespace-nowrap transition-colors" data-filter="all">
+        Tất cả (5)
+      </button>
+      <button class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 whitespace-nowrap transition-colors" data-filter="pending">
+        Chưa hoàn thành (2)
+      </button>
+      <button class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 whitespace-nowrap transition-colors" data-filter="completed">
+        Đã hoàn thành (3)
+      </button>
+    </div>
+
+    <!-- Add Task Input -->
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center flex-shrink-0">
+          <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <input type="text" placeholder="Thêm nhiệm vụ mới..." 
+            class="w-full text-sm text-gray-900 placeholder-gray-400 border-0 p-0 focus:ring-0 focus:outline-none"
+            maxlength="200">
+          <div class="text-xs text-gray-400 mt-1">Nhấn Enter để tạo nhanh</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task List -->
+    <div class="space-y-3" id="taskList">
+      <!-- Pending Task 1 -->
+      <div class="task-item bg-white rounded-xl shadow-sm p-4 fade-in" data-status="pending">
+        <div class="flex items-start gap-3">
+          <div class="pt-0.5">
+            <input type="checkbox" class="task-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="task-title text-sm font-medium text-gray-900">Hoàn thiện bản thiết kế UI cho dự án Task Manager</h3>
+                <p class="text-xs text-gray-500 mt-1 line-clamp-2">Tạo mockup cho các màn hình chính: danh sách nhiệm vụ, form tạo mới, và trang chi tiết</p>
+              </div>
+              <div class="flex items-center gap-1 flex-shrink-0">
+                <button class="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+                  <svg class="1.5 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                  </svg>
+                </button>
+                <button class="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 mt-3">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                Đang làm
+              </span>
+              <span class="text-xs text-gray-400">Tạo 2 giờ trước</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending Task 2 -->
+      <div class="task-item bg-white rounded-xl shadow-sm p-4 fade-in" data-status="pending">
+        <div class="flex items-start gap-3">
+          <div class="pt-0.5">
+            <input type="checkbox" class="task-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="task-title text-sm font-medium text-gray-900">Mua nguyên liệu nấu ăn cuối tuần</h3>
+                <p class="text-xs text-gray-500 mt-1 line-clamp-2">Thịt bò, rau cải, cà chua, hành tây, sữa tươi</p>
+              </div>
+              <div class=".flex items-center gap-1 flex-shrink-0">
+                <button class="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                  </svg>
+                </button>
+                <button class="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 mt-3">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                Chưa bắt đầu
+              </span>
+              <span class="text-xs text-gray-400">Tạo 5 giờ trước</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Completed Task 1 -->
+      <div class="task-item bg-white rounded-xl shadow-sm p-4 fade-in" data-status="completed">
+        <div class="flex items-start gap-3">
+          <div class="pt-0.5">
+            <input type="checkbox" checked class="task-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w">
+                <h3 class="task-title text-sm font-medium text-gray-900 line-through text-gray-400">Đọc sách "Deep Work" - Chương 3</h3>
+                <p class="text-xs text-gray-400 mt-1 line-clamp-2">Ghi chú về phương pháp làm việc tập trung</p>
+              </div>
+              <div class="flex items-center gap-1 flex-shrink-0">
+                <button class="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 mt-3">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                Hoàn thành
+              </span>
+              <span class="text-xs text-gray-400">Hoàn thành 1 giờ trước</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Completed Task 2 -->
+      <div class="task-item bg-white rounded-xl shadow-sm p-4 fade-in" data-status="completed">
+        <div class="flex items-start gap-3">
+          <div class="pt-0.5">
+            <input type="checkbox" checked class="task-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="task-title text-sm font-medium text-gray-900 line-through text-gray-400">Gửi email báo cáo tuần cho team</h3>
+                <p class="text-xs text-gray-400 mt-1 line-clamp-2">Tổng hợp tiến độ dự án A và B</p>
+              </div>
+              <div class="flex items-center gap-1 flex-shrink-0">
+                <button class="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 mt-3">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                Hoàn thành
+              </span>
+              <span class="text-xs text-gray-400">Hoàn thành hôm qua</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Completed Task 3 -->
+      <div class="task-item bg-white rounded-xl shadow-sm p-4 fade-in" data-status="completed">
+        <div class="flex items-start gap-3">
+          <div class="pt-0.5">
+            <input type="checkbox" checked class="task-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="task-title text-sm font-medium text-gray-900 line-through text-gray-400">Tập gym buổi sáng</h3>
+                <p class="text-xs text-gray-400 mt-1 line-clamp-2">Cardio 30 phút

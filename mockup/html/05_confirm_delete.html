@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xác nhận xóa nhiệm vụ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .modal-overlay {
+      background-color: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes scaleIn {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.2s ease-out;
+    }
+    .animate-scale-in {
+      animation: scaleIn 0.2s ease-out;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Background context - task list page (dimmed) -->
+  <div class="opacity-50 pointer-events-none">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+            </div>
+            <h1 class="text-xl font-bold text-gray-900">Task Manager</h1>
+          </div>
+          <button class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+            + Thêm nhiệm vụ
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Filter tabs -->
+    <div class="bg-white border-b border-gray-200">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6">
+        <div class="flex gap-6">
+          <button class="py-3 text-sm font-medium text-indigo-600 border-b-2 border-indigo-600">Tất cả</button>
+          <button class="py-3 text-sm font-medium text-gray-500">Chưa hoàn thành</button>
+          <button class="py-3 text-sm font-medium text-gray-500">Đã hoàn thành</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task list -->
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+      <div class="bg-white rounded-xl border border-gray-200 p-4 mb-3">
+        <div class="flex items-start gap-3">
+          <div class="w-5 h-5 rounded-full border-2 border-gray-300 mt-0.5"></div>
+          <div class="flex-1">
+            <h3 class="text-sm font-medium text-gray-900">Hoàn thành báo cáo tuần</h3>
+            <p class="text-sm text-gray-500 mt-1">Tổng kết tiến độ dự án A</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Overlay -->
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay animate-fade-in">
+    
+    <!-- Confirm Delete Modal -->
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-scale-in">
+      
+      <!-- Modal Header with warning icon -->
+      <div class="px-6 pt-6 pb-4 text-center">
+        <div class="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </div>
+        <h2 class="text-lg font-bold text-gray-900 mb-1">Xác nhận xóa nhiệm vụ</h2>
+        <p class="text-sm text-gray-500">Bạn có chắc chắn muốn xóa nhiệm vụ này? Hành động này không thể hoàn tác.</p>
+      </div>
+
+      <!-- Task preview -->
+      <div class="px-6 pb-4">
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+          <p class="text-sm font-medium text-gray-900 mb-1">Hoàn thành báo cáo tuần</p>
+          <p class="text-sm text-gray-500">Tổng kết tiến độ dự án A</p>
+          <div class="flex items-center gap-2 mt-2">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+              Chưa hoàn thành
+            </span>
+            <span class="text-xs text-gray-400">Tạo: 15/01/2024</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warning note -->
+      <div class="px-6 pb-6">
+        <div class="flex items-start gap-2 bg-red-50 rounded-lg p-3">
+          <svg class="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <p class="text-sm text-red-700">Dữ liệu sẽ bị xóa vĩnh viễn khỏi thiết bị này và không thể khôi phục.</p>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="px-6 pb-6 flex flex-col sm:flex-row gap-3">
+        <button 
+          class="flex-1 order-2 sm:order-1 px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          onclick="window.location.href='04_task_list.html'"
+        >
+          Hủy bỏ
+        </button>
+        <button 
+          class="flex-1 order-1 sm:order-2 px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+          onclick="this.innerHTML='<svg class=\'w-4 h-4 animate-spin\' fill=\'none\' viewBox=\'0 0 24 24\'><circle class=\'opacity-25\' cx=\'12\' cy=\'12\' r=\'10\' stroke=\'currentColor\' stroke-width=\'4\'></circle><path class=\'opacity-75\' fill=\'currentColor\' d=\'M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z\'></path></svg>Đang xóa...'; setTimeout(() => window.location.href='04_task_list.html', 800)"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1</svg>
+          Xóa nhiệm vụ
+        </button>
+      </div>
+
+      <!-- Keyboard shortcut hint -->
+      <div class="px-6 pb-4 text-center">
+        <p class="text-xs text-gray-400">
+          Nhấn <kbd class="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600 font-mono text-xs">Esc</kbd> để hủy
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Escape key handler -->
+  <script>
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        window.location.href = '04_task_list.html';
+      }
+    });
+  </script>
+</body>
+</html>
