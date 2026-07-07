@@ -3,7 +3,12 @@ import os
 from typing import Dict, Any
 from langchain_core.runnables import RunnableConfig
 
-from graph.state import SoftwareFactoryState
+from graph.state import (
+    SoftwareFactoryState,
+    count_rejects,
+    update_node_stats,
+    push_content_history,
+)
 from graph.llm import llm_factory
 from graph.artifact_store import save_design, read_design, save_prd, read_prd, read_gate_feedback
 from graph.prompt_loader import load_prompt
@@ -61,13 +66,14 @@ def design_node(state: SoftwareFactoryState, config: RunnableConfig | None = Non
     else:
         user_prompt += "Hãy viết Design Document chi tiết dựa trên PRD trên."
     
-    result = llm.call(
+    llm_response = llm.call(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.3,
         max_tokens=20000,
     )
-    
+    result = llm_response.content
+
     if result is None:
         return {
             "design_doc": "## LỖI: LLM không trả về Design Document.",
@@ -77,13 +83,25 @@ def design_node(state: SoftwareFactoryState, config: RunnableConfig | None = Non
     
     # Lưu kết quả vào Artifact Store
     save_design(thread_id, result)
-    
+
+    # ── Observability: token/model/history ──
+    # gate_design đứng ngay sau "design" trong graph (design -> gate_design).
+    node_stats = update_node_stats(
+        state.node_stats, "design",
+        reject_count=count_rejects(state.gate_history, "gate_design"),
+        tokens_used=llm_response.total_tokens,
+        model=llm_response.model,
+    )
+    content_history = push_content_history(state.content_history, "design", result)
+
     return {
         "design_doc": result,
         "status": "running",
         "gate_decision": None,
         "current_gate": "",
         "pending_gate_role": "",
+        "node_stats": node_stats,
+        "content_history": content_history,
     }
 
 # Alias để GraphBuilder dùng

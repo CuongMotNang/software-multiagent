@@ -1,9 +1,8 @@
 """Nvidia NIM provider — implement BaseLLM cho Nvidia GPT API."""
 import os
-from typing import Optional
 import httpx
 from dotenv import load_dotenv
-from graph.llm.base import BaseLLM
+from graph.llm.base import BaseLLM, LLMResponse
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
@@ -24,7 +23,7 @@ class NvidiaLLM(BaseLLM):
         user_prompt: str,
         temperature: float = 0.3,
         max_tokens: int = 4096,
-    ) -> Optional[str]:
+    ) -> LLMResponse:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -49,7 +48,16 @@ class NvidiaLLM(BaseLLM):
                 resp.raise_for_status()
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
-                return content.strip() if content else None
+                # NVIDIA API (OpenAI-compatible) luôn trả kèm field "usage" -
+                # trước đây bị bỏ qua hoàn toàn, giờ lấy ra để tracking token.
+                usage = data.get("usage", {}) or {}
+                return LLMResponse(
+                    content=content.strip() if content else None,
+                    prompt_tokens=usage.get("prompt_tokens", 0),
+                    completion_tokens=usage.get("completion_tokens", 0),
+                    total_tokens=usage.get("total_tokens", 0),
+                    model=self.model,
+                )
         except Exception as e:
             print(f"[NvidiaLLM] Error: {e}")
-            return None
+            return LLMResponse(content=None, model=self.model)

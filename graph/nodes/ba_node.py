@@ -2,7 +2,11 @@
 import os
 from typing import Dict, Any
 from langchain_core.runnables import RunnableConfig
-from graph.state import SoftwareFactoryState
+from graph.state import (
+    SoftwareFactoryState,
+    update_node_stats,
+    push_content_history,
+)
 from graph.llm import llm_factory
 from graph.artifact_store import save_prd, read_prd
 from graph.prompt_loader import load_prompt
@@ -62,13 +66,14 @@ def ba_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) -
         user_prompt += f"Hãy phân tích yêu cầu trên theo đúng cấu trúc đã quy định."
     
     # Gọi LLM
-    result = llm.call(
+    llm_response = llm.call(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.3,
         max_tokens=20000,
     )
-    
+    result = llm_response.content
+
     if result is None:
         return {
             "prd_draft": "## LỖI: LLM không trả về kết quả. Vui lòng thử lại.",
@@ -78,13 +83,27 @@ def ba_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) -
     
     # Lưu kết quả vào Artifact Store (dùng thread_id từ config)
     save_prd(thread_id, result)
-    
+
+    # ── Observability: token/model/history ──
+    # Lưu ý: "ba" không có gate riêng ngay sau nó (edge thật là
+    # ba -> prd -> gate_prd, gate_prd review output của "prd" chứ không
+    # phải của "ba") nên reject_count của ba luôn = 0.
+    node_stats = update_node_stats(
+        state.node_stats, "ba",
+        reject_count=0,
+        tokens_used=llm_response.total_tokens,
+        model=llm_response.model,
+    )
+    content_history = push_content_history(state.content_history, "ba", result)
+
     return {
         "prd_draft": result,
         "status": "running",
         "gate_decision": None,
         "current_gate": "",
         "pending_gate_role": "",
+        "node_stats": node_stats,
+        "content_history": content_history,
     }
 
 

@@ -3,7 +3,12 @@ import os
 from typing import Dict, Any
 from langchain_core.runnables import RunnableConfig
 
-from graph.state import SoftwareFactoryState
+from graph.state import (
+    SoftwareFactoryState,
+    count_rejects,
+    update_node_stats,
+    push_content_history,
+)
 from graph.llm import llm_factory
 from graph.artifact_store import (
     save_prd, read_prd,
@@ -75,13 +80,14 @@ def prd_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) 
             + "\nLưu ý các nhận xét trên khi viết lại tài liệu.\n"
         )
     
-    result = llm.call(
+    llm_response = llm.call(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.3,
         max_tokens=20000,
     )
-    
+    result = llm_response.content
+
     if result is None:
         return {
             "prd_v1": "## LỖI: LLM không trả về kết quả PRD.",
@@ -91,8 +97,24 @@ def prd_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) 
     
     # Lưu kết quả vào Artifact Store
     save_prd(thread_id, result)
-    
-    return {"prd_v1": result, "status": "running"}
+
+    # ── Observability: token/model/history ──
+    # gate_prd đứng ngay sau "prd" trong graph (prd -> gate_prd), nên
+    # gate_prd chính là gate review output của node "prd".
+    node_stats = update_node_stats(
+        state.node_stats, "prd",
+        reject_count=count_rejects(state.gate_history, "gate_prd"),
+        tokens_used=llm_response.total_tokens,
+        model=llm_response.model,
+    )
+    content_history = push_content_history(state.content_history, "prd", result)
+
+    return {
+        "prd_v1": result,
+        "status": "running",
+        "node_stats": node_stats,
+        "content_history": content_history,
+    }
 
 # Alias để GraphBuilder dùng
 PRD_NODE = prd_node

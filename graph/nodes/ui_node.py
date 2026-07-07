@@ -8,11 +8,21 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
-from graph.state import SoftwareFactoryState
+from graph.state import (
+    SoftwareFactoryState,
+    count_rejects,
+    update_node_stats,
+    push_content_history,
+)
+from graph.artifact_store import save_mockup_screens, SANDBOX_ROOT
 
 CUR_DIR = Path(__file__).parent.parent.resolve()
 PROMPT_DIR = CUR_DIR / ".." / "prompts"
-SANDBOX = Path(__file__).resolve().parent.parent.parent / "sandbox" / "workspace"
+# Dùng chung SANDBOX_ROOT với artifact_store.py (KHÔNG tự tính tay riêng)
+# để tránh lệch cấu trúc thư mục — artifact_store lưu vào
+# sandbox/workspace/{thread_id}/artifacts/..., không phải
+# sandbox/workspace/{thread_id}/... như code cũ từng hardcode.
+WORKSPACE_ROOT = SANDBOX_ROOT / "workspace"
 
 # Chỉ khớp đúng format mà design_system prompt yêu cầu:
 #   {số_thứ_tự}_{tên_file}|{tên_hiển_thị}   ví dụ: 01_login|Đăng nhập
@@ -48,19 +58,21 @@ def _read_prompt(sub: str, version: str | None = None) -> str:
     return p.read_text(encoding="utf-8") if p.exists() else ""
 
 
-def _ask_llm(prompt: str, *, max_tokens=20000, **kwargs) -> str:
+def _ask_llm(prompt: str, *, max_tokens=20000, **kwargs):
+    """Trả về LLMResponse đầy đủ (content + usage + model), KHÔNG chỉ string,
+    để ui_node() cộng dồn được token qua nhiều lần gọi (mỗi màn hình 1 lần).
+    """
     import os
     from graph.llm import llm_factory
 
     provider_name = os.getenv("UI_PROVIDER", None)
     llm = llm_factory(provider_name)
-    result = llm.call(
+    return llm.call(
         system_prompt="",
         user_prompt=prompt,
         temperature=kwargs.get("temperature", 0.3),
         max_tokens=max_tokens,
     )
-    return result or ""
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +107,10 @@ def _list_screens_via_llm(state: SoftwareFactoryState) -> list[tuple[str, str]]:
     Khi đó gọi riêng 1 lần LLM với prompt `ui_screens_list.txt` (đã có
     sẵn trong repo nhưng trước giờ chưa được dùng tới) để LLM liệt kê lại
     danh sách màn hình từ design_doc, đảm bảo output đúng format.
+
+    Lưu ý: token của lệnh gọi này KHÔNG được cộng vào node_stats["ui"]
+    (đơn giản hoá phạm vi) — chỉ token của các lệnh gọi generate HTML mới
+    được tính, vì đó là phần chiếm phần lớn chi phí thực tế.
     """
     system_prompt = _read_prompt("ui_screens_list.txt")
     if not system_prompt:
@@ -102,7 +118,8 @@ def _list_screens_via_llm(state: SoftwareFactoryState) -> list[tuple[str, str]]:
 
     design = state.design_doc or ""
     prompt = f"{system_prompt}\n\n## TÀI LIỆU THIẾT KẾ\n\n{design[:6000]}"
-    raw = _ask_llm(prompt, max_tokens=1024)
+    llm_response = _ask_llm(prompt, max_tokens=1024)
+    raw = llm_response.content or ""
 
     screens: list[tuple[str, str]] = []
     for line in raw.splitlines():
@@ -123,7 +140,10 @@ def _list_screens_via_llm(state: SoftwareFactoryState) -> list[tuple[str, str]]:
 
 def _generate_screen_html(screen_slug: str, screen_label: str,
                             design: str, prd: str, requirements: str,
-                            version: int) -> str:
+                            version: int):
+    """Trả về tuple (html, llm_response) — llm_response dùng để ui_node()
+    cộng dồn token/model qua nhiều lần gọi (1 lần / màn hình).
+    """
     base_prompt = _read_prompt("ui_system.txt")
     screen_prompt = _read_prompt("ui_screen_detail.txt", version=f"v{version}")
     if not screen_prompt:
@@ -156,9 +176,9 @@ KHÔNG tạo thêm màn hình nào khác.
 CHỈ trả về đúng 1 khối HTML hoàn chỉnh, bắt đầu bằng <!DOCTYPE html>, không có text giải thích nào khác.
 """
     prompt = f"{base_prompt}\n\n{user_msg}"
-    html = _ask_llm(prompt, max_tokens=4096)
-    html = _extract_single_html(html)
-    return html
+    llm_response = _ask_llm(prompt, max_tokens=4096)
+    html = _extract_single_html(llm_response.content or "")
+    return html, llm_response
 
 def _extract_single_html(raw: str) -> str:
     """Safety-net: nếu LLM vẫn lỡ trả về nhiều file theo marker
@@ -177,12 +197,6 @@ def _extract_single_html(raw: str) -> str:
             return part
     return raw.strip()
 
-
-def _save_html(html: str, dir: Path, name: str) -> Path:
-    dir.mkdir(parents=True, exist_ok=True)
-    path = dir / f"{name}.html"
-    path.write_text(html, encoding="utf-8")
-    return path
 
 # ---------------------------------------------------------------------------
 # Phase 3 – capture screenshots
@@ -220,20 +234,6 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
         configurable = config.get("configurable", {}) or {}
         thread_id = configurable.get("thread_id", "default")
 
-    project_dir = Path.cwd()
-
-    # sandbox: sandbox/workspace/{thread_id}/mockup_versions/v1/
-    sandbox_path = SANDBOX / thread_id / "mockup_versions" / "v1"
-    sandbox_path.mkdir(parents=True, exist_ok=True)
-
-    # Lưu thêm 1 bản local trong project root (tiện hóa mockup/v1)
-    mockup_dir = project_dir / "mockup"
-    mockup_dir.mkdir(parents=True, exist_ok=True)
-    html_dir = mockup_dir / "html"
-    html_dir.mkdir(parents=True, exist_ok=True)
-    version_dir = mockup_dir / "v1"
-    version_dir.mkdir(parents=True, exist_ok=True)
-
     design = state.design_doc or ""
     prd = state.prd_v1 or state.prd_approved or ""
     requirements = state.prd_draft or ""
@@ -252,37 +252,61 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
         ]
     print(f"  ✓ Sẽ generate {len(screens)} màn hình: {[s for s, _ in screens]}")
 
-    # ── generate HTML + save to both sandbox & local ──
-    html_paths: list[Path] = []
+    # ── generate HTML (giữ trong bộ nhớ, chưa ghi file vội) ──
+    generated: list[dict] = []  # [{"filename": ..., "html": ...}]
+    total_tokens = 0
+    model_used = ""
     for slug, label in screens:
         print(f"  → generating {slug} ({label})...")
         try:
-            html = _generate_screen_html(slug, label, design, prd, requirements, 1)
-            _save_html(html, html_dir, slug)               # local
-            path = _save_html(html, sandbox_path, slug)    # sandbox served
-            html_paths.append(path)
-            print(f"  ✓ HTML saved: {path.name}")
+            html, llm_response = _generate_screen_html(slug, label, design, prd, requirements, 1)
+            total_tokens += llm_response.total_tokens
+            model_used = llm_response.model or model_used
+            generated.append({"filename": f"{slug}.html", "html": html})
         except Exception as e:
             print(f"  ⚠️ Screen '{slug}' failed, skipping: {e}")
 
-    # ── capture PNG in sandbox ──
-    png_paths: list[Path] = []
-    try:
-        png_paths = _capture_screens_to(html_paths, sandbox_path)
-        print(f"  ✓ {len(png_paths)} screenshot PNG captured → {sandbox_path}")
-    except Exception as e:
-        print(f"  ⚠️ PNG capture failed: {e}")
+    # ── lưu vào đúng version mới (tự tăng v1, v2, v3... — KHÔNG hardcode v1
+    # và KHÔNG ghi đè bản cũ như code trước đây) ──
+    html_paths: list[Path] = save_mockup_screens(thread_id, generated)
+    version_dir = html_paths[0].parent if html_paths else None
+    if version_dir:
+        print(f"  ✓ Đã lưu {len(html_paths)} file HTML vào {version_dir}")
 
-    # ━━ return paths for frontend: /artifacts/{thread_id}/mockup_versions/v1/01_screen.png ━━
+    # ── capture PNG cùng thư mục version vừa lưu ──
+    png_paths: list[Path] = []
+    if version_dir:
+        try:
+            png_paths = _capture_screens_to(html_paths, version_dir)
+            print(f"  ✓ {len(png_paths)} screenshot PNG captured → {version_dir}")
+        except Exception as e:
+            print(f"  ⚠️ PNG capture failed: {e}")
+
+    # ━━ URL cho frontend: tính từ path thật, không hardcode cấu trúc thư mục,
+    # để không lệch nếu artifact_store.py đổi cấu trúc lưu trữ sau này. ━━
     mockup_screenshots: list[str] = [
-        f"/artifacts/{thread_id}/mockup_versions/v1/{p.stem}.png"
+        f"/artifacts/{p.relative_to(WORKSPACE_ROOT).as_posix()}"
         for p in png_paths
     ]
 
+    # ── Observability: token/model/history ──
+    # gate_mockup đứng ngay sau "ui" trong graph (ui -> gate_mockup).
+    # content_history của "ui" lưu 1 bản tóm tắt (danh sách slug + version)
+    # thay vì toàn bộ HTML nhiều màn hình (tránh phình quá to mỗi lần lưu).
+    node_stats = update_node_stats(
+        state.node_stats, "ui",
+        reject_count=count_rejects(state.gate_history, "gate_mockup"),
+        tokens_used=total_tokens,
+        model=model_used,
+    )
+    version_label = version_dir.name if version_dir else "?"
+    screens_summary = f"[{version_label}] {len(screens)} màn hình: " + ", ".join(s for s, _ in screens)
+    content_history = push_content_history(state.content_history, "ui", screens_summary)
+
     return dict(
         mockup_screenshots=mockup_screenshots,
-        _mockup_dir=str(mockup_dir),
-        _version_dir=str(sandbox_path),
+        node_stats=node_stats,
+        content_history=content_history,
     )
 
 # Alias để GraphBuilder dùng

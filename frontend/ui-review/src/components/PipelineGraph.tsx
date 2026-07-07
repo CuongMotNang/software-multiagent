@@ -3,6 +3,7 @@ interface Props {
   nextNodes: string[];   // từ thread state .next
   isRunning: boolean;
   currentNode: string;   // node đang chạy (từ stream updates)
+  nodeStats?: Record<string, { reject_count: number; tokens_used: number; model: string }>;
 }
 
 const NODES = [
@@ -23,7 +24,7 @@ const CX = 160; // center x của cột chính
 const SVG_W = 340;
 const SVG_H = NODES.length * ROW_H + 20;
 
-export function PipelineGraph({ currentGate, nextNodes, isRunning, currentNode }: Props) {
+export function PipelineGraph({ currentGate, nextNodes, isRunning, currentNode, nodeStats }: Props) {
   const getNodeY = (y: number) => y * ROW_H - ROW_H / 2 + 10;
 
   const nodeState = (id: string): "active" | "waiting" | "running" | "idle" => {
@@ -74,11 +75,14 @@ export function PipelineGraph({ currentGate, nextNodes, isRunning, currentNode }
           fill="none" stroke="#ff9f9f" strokeWidth={1.5} strokeDasharray="4,3" />
         <text x={CX - NODE_W - 24} y={getNodeY(6) + 14} fontSize={10} fill="#ff7875" textAnchor="middle">↺ reject</text>
 
-        {/* Nodes */}
+                {/* Nodes */}
         {NODES.map((n) => {
           const state = nodeState(n.id);
           const color = nodeColor(state, (n as any).isGate);
           const y = getNodeY(n.y);
+          const stats = nodeStats?.[n.id];
+          const showStats = !!(n.id !== "gate_prd" && n.id !== "gate_design" && n.id !== "gate_mockup" && n.id !== "engineer" && stats);
+          
           return (
             <g key={n.id}>
               <rect x={CX - NODE_W / 2} y={y} width={NODE_W} height={NODE_H}
@@ -91,6 +95,14 @@ export function PipelineGraph({ currentGate, nextNodes, isRunning, currentNode }
                 fontSize={12} fontWeight={(n as any).isGate ? 500 : 600} fill={color.text}>
                 {(n as any).isGate ? "⏸ " : ""}{n.label}
               </text>
+              {showStats && (
+                <g>
+                  <text x={CX} y={y + NODE_H + 14} textAnchor="middle"
+                    fontSize={9} fill="#666">
+                    🔁 {stats.reject_count} │ 🔢 {stats.tokens_used} tok │ 🤖 {stats.model?.split("/").pop() || stats.model}
+                  </text>
+                </g>
+              )}
             </g>
           );
         })}
