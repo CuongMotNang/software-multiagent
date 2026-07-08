@@ -50,6 +50,12 @@ function ReviewApp() {
   const [nextNodes, setNextNodes] = useState<string[]>([]);
   const [interrupted, setInterrupted] = useState(false);
 
+  // NEW: nguồn dữ liệu thật cho state, được nạp từ client.threads.getState()
+  // (thread?.values từ useStream không đáng tin vì các lần chạy pipeline
+  // đều dùng client.runs.stream() gọi tay, không đi qua cơ chế nội bộ của hook)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [snapshotState, setSnapshotState] = useState<Record<string, any>>({});
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stream: any = useStream({
     client,
@@ -66,9 +72,9 @@ function ReviewApp() {
     },
   });
 
-  const { thread, error } = stream;
+  const { error } = stream;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const state: Record<string, any> = thread?.values ?? {};
+  const state: Record<string, any> = snapshotState;
 
   // DEBUG: log mockup data để kiểm tra format thật
   console.log("[debug] mockup_screenshots:", state.mockup_screenshots);
@@ -82,6 +88,8 @@ function ReviewApp() {
       if (!threadId) return;
       try {
         const s = await client.threads.getState(threadId);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setSnapshotState((s.values as Record<string, any>) ?? {});
         const next = s.next || [];
         setNextNodes(next);
         const isAtGate = next.some((n: string) => n.startsWith("gate_"));
@@ -97,17 +105,20 @@ function ReviewApp() {
     if (!isRunning && threadId) {
       checkInterrupt();
     }
-  }, [threadId, isRunning, thread]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, isRunning]);
 
   const currentGate: string =
-    state.current_gate ?? nextNodes.find((n) => n.startsWith("gate_")) ?? "";
+  state.current_gate ||
+  nextNodes.find((n) => n.startsWith("gate_")) ||
+  "";
   const pendingRole: string =
-    state.pending_gate_role ??
-    (currentGate === "gate_prd" || currentGate === "gate_mockup"
-      ? "ba"
-      : currentGate === "gate_design"
-      ? "dev"
-      : "");
+  state.pending_gate_role ||
+  (currentGate === "gate_prd" || currentGate === "gate_mockup"
+    ? "ba"
+    : currentGate === "gate_design"
+    ? "dev"
+    : "");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const gateHistory: Array<Record<string, any>> = state.gate_history ?? [];
   const hasStarted = !!threadId;
@@ -122,6 +133,11 @@ function ReviewApp() {
   const fetchLatestState = async (tid: string) => {
     try {
       const s = await client.threads.getState(tid);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setSnapshotState((s.values as Record<string, any>) ?? {});
+      setNextNodes(next);
+      const isAtGate = next.some((n: string) => n.startsWith("gate_"));
+      setInterrupted(isAtGate);
       console.log("[state]", {
         next: s.next,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -192,23 +208,23 @@ function ReviewApp() {
   };
 
   const handleGateSubmit = async (decision: "approve" | "reject") => {
-  if (!threadId) return;
-  setSubmitError(null);
-  setIsRunning(true);
-  setInterrupted(false);
-  setCurrentNode("resuming");
-  try {
-    // ← SỬA: dùng "action" thay vì "decision", bỏ hết các field _approved
-    const resumeData = {
-      action: decision,           // backend đọc field "action", không phải "decision"
-      feedback: feedback.trim(),
-    };
+    if (!threadId) return;
+    setSubmitError(null);
+    setIsRunning(true);
+    setInterrupted(false);
+    setCurrentNode("resuming");
+    try {
+      // dùng "action" thay vì "decision" — backend đọc field "action"
+      const resumeData = {
+        action: decision,
+        feedback: feedback.trim(),
+      };
 
-    console.log("[gate] Submitting:", resumeData);
-    const runStream = client.runs.stream(threadId, GRAPH_ID, {
-      command: { resume: resumeData },
-      streamMode: ["values", "updates", "custom"],
-    });
+      console.log("[gate] Submitting:", resumeData);
+      const runStream = client.runs.stream(threadId, GRAPH_ID, {
+        command: { resume: resumeData },
+        streamMode: ["values", "updates", "custom"],
+      });
 
       for await (const event of runStream) {
         if (event.event === "updates") {
@@ -617,6 +633,7 @@ function ReviewApp() {
           setIsRunning(false);
           setCurrentNode("");
           setInterrupted(false);
+          setSnapshotState({});
         }}
         onCreateNew={() => {
           setThreadId(undefined);
@@ -624,6 +641,7 @@ function ReviewApp() {
           setCurrentNode("");
           setInterrupted(false);
           setFeedback("");
+          setSnapshotState({});
         }}
       />
 
@@ -641,6 +659,7 @@ function ReviewApp() {
           nextNodes={nextNodes}
           isRunning={isRunning}
           currentNode={currentNode}
+          nodeStats={state.node_stats}
         />
       </div>
 

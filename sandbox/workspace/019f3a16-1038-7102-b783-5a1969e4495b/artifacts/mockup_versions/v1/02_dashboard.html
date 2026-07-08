@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Quản lý kỳ thi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .sidebar { width: 250px; }
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); transition: transform 0.3s; }
+      .sidebar.open { transform: translateX(0); }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex">
+  <!-- Sidebar -->
+  <aside class="sidebar bg-white shadow-lg h-full fixed md:relative inset-y-0 left-0 z-20 overflow-y-auto">
+    <div class="p-4 flex items-center justify-between md:justify-center">
+      <h2 class="text-xl font-semibold text-gray-800">ExamAdmin</h2>
+      <button id="closeSidebar" class="md:hidden text-gray-600">
+        ✕
+      </button>
+    </div>
+    <nav class="mt-6">
+      <a href="01_login.html" class="block py-2.5 px-4 rounded transition hover:bg-gray-200">Đăng nhập</a>
+      <a href="02_dashboard.html" class="block py-2.5 px-4 rounded bg-gray-200 font-medium">Dashboard</a>
+      <a href="03_exam_list.html" class="block py-2.5 px-4 rounded transition hover:bg-gray-200">Danh sách kỳ thi</a>
+      <a href="04_question_bank.html" class="block py-2.5 px-4 rounded transition hover:bg-gray-200">Ngân hàng câu hỏi</a>
+      <a href="05_user_management.html" class="block py-2.5 px-4 rounded transition hover:bg-gray-200">Quản lý người dùng</a>
+      <a href="06_reports.html" class="block py-2.5 px-4 rounded transition hover:bg-gray-200">Báo cáo</a>
+      <a href="07_settings.html" class="block py-2.5 px-4 rounded transition hover:bg-gray-200">Cài đặt</a>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="flex-1 flex flex-col md:ml-64">
+    <!-- Top Bar -->
+    <header class="bg-white shadow-sm flex items-center justify-between px-4 py-3 md:px-6">
+      <div class="flex items-center">
+        <button id="openSidebar" class="md:hidden text-gray-600 mr-4">
+          ☰
+        </button>
+        <h1 class="text-2xl font-semibold text-gray-800">Bảng điều khiển</h1>
+      </div>
+      <div class="flex items-center space-x-4">
+        <button class="relative">
+          <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+          <span class="absolute -top-1 -right-2 bg-red-500 text-white rounded-full text-xs w-4 h-4 flex items-center justify-center">3</span>
+        </button>
+        <img src="https://i.pravatar.cc/40?img=3" alt="Avatar" class="w-10 h-10 rounded-full">
+      </div>
+    </header>
+
+    <!-- Dashboard Content -->
+    <main class="p-4 md:p-6 flex-1 overflow-y-auto">
+      <div class="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        <!-- Card: Tổng kỳ thi -->
+        <div class="bg-white rounded-lg shadow p-5">
+          <h3 class="text-gray-600 font-medium">Tổng số kỳ thi</h3>
+          <p class="mt-2 text-3xl font-bold text-indigo-600">12</p>
+        </div>
+        <!-- Card: Kỳ thi sắp tới -->
+        <div class="bg-white rounded-lg shadow p-5">
+          <h3 class="text-gray-600 font-medium">Kỳ thi sắp tới</h3>
+          <ul class="mt-2 space-y-2 text-sm">
+            <li class="flex justify-between">
+              <span>Toán học - Lớp 10</span>
+              <span class="text-indigo-600">12/09/2024</span>
+            </li>
+            <li class="flex justify-between">
+              <span>Lý - Lớp 11</span>
+              <span class="text-indigo-600">20/09/2024</span>
+            </li>
+            <li class="flex justify-between">
+              <span>Hóa - Lớp 12</span>
+              <span class="text-indigo-600">05/10/2024</span>
+            </li>
+          </ul>
+        </div>
+        <!-- Card: Đăng ký mới -->
+        <div class="bg-white rounded-lg shadow p-5">
+          <h3 class="text-gray-600 font-medium">Đăng ký mới (7 ngày)</h3>
+          <p class="mt-2 text-3xl font-bold text-green-600">48</p>
+        </div>
+        <!-- Card: Người dùng -->
+        <div class="bg-white rounded-lg shadow p-5">
+          <h3 class="text-gray-600 font-medium">Người dùng hoạt động</h3>
+          <p class="mt-2 text-3xl font-bold text-blue-600">124</p>
+        </div>
+        <!-- Card: Câu hỏi trong ngân hàng -->
+        <div class="bg-white rounded-lg shadow p-5">
+          <h3 class="text-gray-600 font-medium">Câu hỏi trong ngân hàng</h3>
+          <p class="mt-2 text-3xl font-bold text-purple-600">1,342</p>
+        </div>
+        <!-- Card: Báo cáo hôm nay -->
+        <div class="bg-white rounded-lg shadow p-5">
+          <h3 class="text-gray-600 font-medium">Báo cáo hôm nay</h3>
+          <ul class="mt-2 space-y-1 text-sm">
+            <li>Thí sinh tham gia: <span class="font-medium">87</span></li>
+            <li>Kỳ thi hoàn thành: <span class="font-medium">5</span></li>
+            <li>Điểm trung bình: <span class="font-medium">78.4</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Recent Activity Table -->
+      <section class="mt-8 bg-white rounded-lg shadow overflow-hidden">
+        <h2 class="px-6 py-4 text-lg font-semibold text-gray-800 border-b">Hoạt động gần đây</h2>
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thời gian</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hành động</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Người dùng</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Chi tiết</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">08:15 12/09</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-indigo-600">Tạo kỳ thi</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Nguyễn Văn A (Teacher)</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Toán học - Lớp 10</td>
+            </tr>
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">09:42 12/09</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">Đăng ký</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Lê Thị B (Student)</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Kỳ thi Toán học - Lớp 10</td>
+            </tr>
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">10:05 12/09</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-yellow-600">Cập nhật câu hỏi</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Trần C (Teacher)</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Câu hỏi ID #342</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const openBtn = document.getElementById('openSidebar');
+    const closeBtn = document.getElementById('closeSidebar');
+    const sidebar = document.querySelector('.sidebar');
+
+    openBtn?.addEventListener('click', () => sidebar.classList.add('open'));
+    closeBtn?.addEventListener('click', () => sidebar.classList.remove('open'));
+  </script>
+</body>
+</html>
