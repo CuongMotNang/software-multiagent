@@ -1,0 +1,21 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# Frontend — không cần trong image chạy graph Python
+frontend/**/node_modules
+frontend/**/dist
+frontend/**/.vite
+
+# Dữ liệu sinh ra lúc chạy — không phải source code
+sandbox/workspace
+projects/
+.langgraph_api
+
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.venv

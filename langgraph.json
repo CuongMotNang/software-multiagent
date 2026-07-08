@@ -5,5 +5,9 @@
   ],
   "graphs": {
     "SoftwareFactory": "graph/graph_builder.py:build_graph"
-  }
+  },
+  "env": ".env",
+  "dockerfile_lines": [
+    "RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*"
+  ]
 }

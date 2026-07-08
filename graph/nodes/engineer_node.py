@@ -58,7 +58,7 @@ import sys
 _graph_root = Path(__file__).resolve().parent.parent.parent
 if str(_graph_root) not in sys.path:
     sys.path.insert(0, str(_graph_root))
-from graph.artifact_store import save_engineer_log, read_engineer_log, save_design, read_design
+from graph.repo_store import save_engineer_log, read_engineer_log, save_design, read_design, read_latest_mockup_screens
 
 # Optional logging
 try:
@@ -248,6 +248,23 @@ def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
         if not design_doc:
             logger.warning("No design_doc, using default")
             design_doc = "Generate a simple hello world application."
+
+    if not mockup_html:
+        # Fix bug: ui_node() không set state.mockup_html nữa (chuyển sang lưu
+        # nhiều màn hình qua repo_store) — nếu không fallback ở đây,
+        # engineer_node LUÔN nhận mockup rỗng dù mockup đã được duyệt.
+        # Ghép tất cả màn hình đã sinh thành 1 chuỗi HTML nhiều section.
+        screen_paths = read_latest_mockup_screens(thread_id)
+        if screen_paths:
+            parts = []
+            for p in screen_paths:
+                try:
+                    parts.append(f"<!-- Screen: {p.stem} -->\n{p.read_text(encoding='utf-8')}")
+                except Exception as e:
+                    logger.warning(f"Không đọc được mockup screen {p}: {e}")
+            mockup_html = "\n\n".join(parts)
+        if not mockup_html:
+            logger.warning("No mockup_html (kể cả sau fallback từ repo_store)")
 
     workspace_path = SANDBOX_BASE / "workspace" / thread_id
     workspace_path.mkdir(parents=True, exist_ok=True)

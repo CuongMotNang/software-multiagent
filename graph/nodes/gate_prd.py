@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Dict, Any
 from langgraph.types import interrupt
 from graph.state import SoftwareFactoryState
-from graph.artifact_store import save_gate_feedback
+from graph.repo_store import save_gate_feedback
 
 def gate_prd(state: SoftwareFactoryState) -> Dict[str, Any]:
     """Cổng duyệt PRD: Sử dụng dynamic interrupt để tạm dừng và chờ duyệt từ BA."""

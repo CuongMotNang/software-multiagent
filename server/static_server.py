@@ -15,14 +15,19 @@ from pathlib import Path
 import uvicorn
 
 SANDBOX_WORKSPACE = Path(__file__).resolve().parent.parent / "sandbox" / "workspace"
+PROJECTS_ROOT = Path(__file__).resolve().parent.parent / "projects"
 
 app = FastAPI(title="SoftwareFactory Artifact Server")
 
-# Mount toàn bộ sandbox/workspace dưới /artifacts
+# Mount toàn bộ sandbox/workspace dưới /artifacts (screenshot PNG, build output — không track git)
 if SANDBOX_WORKSPACE.exists():
     app.mount("/artifacts", StaticFiles(directory=str(SANDBOX_WORKSPACE)), name="artifacts")
 else:
     print(f"[static_server] WARNING: sandbox/workspace not found at {SANDBOX_WORKSPACE}")
+
+# Mount toàn bộ projects/ dưới /repo — nội dung PRD/design/mockup thật (git-tracked, xem repo_store.py)
+PROJECTS_ROOT.mkdir(parents=True, exist_ok=True)
+app.mount("/repo", StaticFiles(directory=str(PROJECTS_ROOT)), name="repo")
 
 
 # Các thư mục không cần hiển thị trên file tree (rác/build artifact, không phải code)
@@ -55,9 +60,9 @@ def _build_tree(path: Path, rel: str = "") -> dict:
 
 @app.get("/tree/{thread_id}")
 async def get_tree(thread_id: str):
-    """Trả về cây thư mục (JSON) của workspace 1 thread, dùng cho file browser
-    kiểu GitHub ở frontend.
-    """
+    """Trả về cây thư mục (JSON) của workspace 1 thread — screenshot/build
+    output KHÔNG track git (xem /tree/project/{project_id} cho nội dung
+    PRD/design/mockup thật)."""
     # Chống path traversal: thread_id không được chứa dấu / \ hoặc "..".
     # thread_id đến trực tiếp từ URL do client gửi lên, không kiểm tra sẽ
     # cho phép đọc bất kỳ file nào ngoài sandbox/workspace.
@@ -67,6 +72,22 @@ async def get_tree(thread_id: str):
     root = SANDBOX_WORKSPACE / thread_id
     if not root.exists() or not root.is_dir():
         raise HTTPException(status_code=404, detail=f"Thread workspace not found: {thread_id}")
+
+    return _build_tree(root)
+
+
+@app.get("/tree/project/{project_id}")
+async def get_project_tree(project_id: str):
+    """Cây thư mục (JSON) của 1 project repo — nội dung PRD/design/mockup
+    thật, track git qua repo_store.py. project_id hiện = thread_id đầu
+    tiên của project (xem quyết định trong ke-hoach-cai-tien-pipeline.md,
+    Giai đoạn 0.2)."""
+    if "/" in project_id or "\\" in project_id or ".." in project_id:
+        raise HTTPException(status_code=400, detail="Invalid project_id")
+
+    root = PROJECTS_ROOT / project_id
+    if not root.exists() or not root.is_dir():
+        raise HTTPException(status_code=404, detail=f"Project repo not found: {project_id}")
 
     return _build_tree(root)
 

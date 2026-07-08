@@ -33,6 +33,9 @@ class SoftwareFactoryState(BaseModel):
     design_doc: str = Field(
         "", description="Thiết kế kỹ thuật (DB schema, API, cấu trúc)"
     )
+    design_tokens: str = Field(
+        "", description="Design tokens JSON (colors/spacing/typography/components) — Giai đoạn 3.1, dùng làm ngữ cảnh bắt buộc khi ui_node sinh screen"
+    )
     mockup_html: str = Field(
         "", description="HTML mockup UI (1 file, CSS inline)"
     )

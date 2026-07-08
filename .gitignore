@@ -1,3 +1,11 @@
 
 # LangGraph API
 .langgraph_api
+
+# Nested git repos — mỗi project trong projects/ tự có .git riêng (xem repo_store.py)
+projects/
+
+# Secrets — không bao giờ commit
+.env
+.env.*
+!.env.example

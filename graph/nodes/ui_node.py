@@ -14,7 +14,7 @@ from graph.state import (
     update_node_stats,
     push_content_history,
 )
-from graph.artifact_store import save_mockup_screens, SANDBOX_ROOT
+from graph.repo_store import save_mockup_screens, screenshot_dir, SANDBOX_ROOT
 
 CUR_DIR = Path(__file__).parent.parent.resolve()
 PROMPT_DIR = CUR_DIR / ".." / "prompts"
@@ -266,19 +266,20 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
         except Exception as e:
             print(f"  ⚠️ Screen '{slug}' failed, skipping: {e}")
 
-    # ── lưu vào đúng version mới (tự tăng v1, v2, v3... — KHÔNG hardcode v1
-    # và KHÔNG ghi đè bản cũ như code trước đây) ──
+    # ── lưu HTML vào git repo project (1 commit/lần, KHÔNG còn thư mục v{N} —
+    # lịch sử version xem qua repo_store.list_versions(), không qua tên thư mục) ──
     html_paths: list[Path] = save_mockup_screens(thread_id, generated)
-    version_dir = html_paths[0].parent if html_paths else None
-    if version_dir:
-        print(f"  ✓ Đã lưu {len(html_paths)} file HTML vào {version_dir}")
+    if html_paths:
+        print(f"  ✓ Đã lưu {len(html_paths)} file HTML vào git repo project ({thread_id})")
 
-    # ── capture PNG cùng thư mục version vừa lưu ──
+    # ── capture PNG vào thư mục screenshot cố định (KHÔNG track git, luôn là
+    # bản mới nhất — tách biệt khỏi HTML vì HTML đã có lịch sử qua git) ──
+    shot_dir = screenshot_dir(thread_id)
     png_paths: list[Path] = []
-    if version_dir:
+    if html_paths:
         try:
-            png_paths = _capture_screens_to(html_paths, version_dir)
-            print(f"  ✓ {len(png_paths)} screenshot PNG captured → {version_dir}")
+            png_paths = _capture_screens_to(html_paths, shot_dir)
+            print(f"  ✓ {len(png_paths)} screenshot PNG captured → {shot_dir}")
         except Exception as e:
             print(f"  ⚠️ PNG capture failed: {e}")
 

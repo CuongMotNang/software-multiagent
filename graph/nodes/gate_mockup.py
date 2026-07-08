@@ -5,7 +5,7 @@ from typing import Dict, Any
 from langgraph.types import interrupt
 from langchain_core.runnables import RunnableConfig
 from graph.state import SoftwareFactoryState
-from graph.artifact_store import _artifact_dir, save_gate_feedback
+from graph.repo_store import _artifact_dir, save_gate_feedback
 
 def gate_mockup(state: SoftwareFactoryState, config: RunnableConfig | None = None) -> Dict[str, Any]:
     """Cổng duyệt Mockup UI: Sử dụng dynamic interrupt để tạm dừng và chờ duyệt từ BA."""

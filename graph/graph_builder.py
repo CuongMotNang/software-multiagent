@@ -59,12 +59,13 @@ from graph.state import SoftwareFactoryState
 from graph.nodes.ba_node import BA_NODE
 from graph.nodes.prd_node import PRD_NODE
 from graph.nodes.design_node import DESIGN_NODE
+from graph.nodes.design_tokens_node import DESIGN_TOKENS_NODE
 from graph.nodes.gate_prd import GATE_PRD
 from graph.nodes.gate_design import GATE_DESIGN
 from graph.nodes.ui_node import UI_NODE
 from graph.nodes.gate_mockup import GATE_MOCKUP
 from graph.nodes.engineer_node import ENGINEER_NODE
-from graph.artifact_store import save_manifest, list_artifacts
+from graph.repo_store import save_manifest, list_artifacts
 
 # Module-level cache: ONE connection pool for the whole process.
 # Re-creating a pool on every get_checkpointer() call would leak connections.
@@ -140,10 +141,14 @@ def route_gate_prd(state: SoftwareFactoryState) -> str:
 
 
 def route_gate_design(state: SoftwareFactoryState) -> str:
-    """Quyết định chuyển tiếp sau khi Dev duyệt Design Doc."""
+    """Quyết định chuyển tiếp sau khi Dev duyệt Design Doc.
+
+    Approve → design_tokens (sinh design_tokens.json TRƯỚC khi vào ui —
+    Giai đoạn 3.1, để ui_node luôn có tokens sẵn khi sinh screen).
+    """
     decision = state.get("gate_decision") if isinstance(state, dict) else state.gate_decision
     if decision == "approve":
-        return "ui"
+        return "design_tokens"
     elif decision in ["edit", "reject"]:
         return "design"
     return "design"
@@ -185,6 +190,7 @@ def build_graph(checkpointer: Any | None = None) -> Any:
     builder.add_node("ba", BA_NODE)          # raw_requirements -> prd_draft
     builder.add_node("prd", PRD_NODE)        # prd_draft -> prd_v1
     builder.add_node("design", DESIGN_NODE)  # prd_v1 -> design_doc
+    builder.add_node("design_tokens", DESIGN_TOKENS_NODE)  # design_doc -> design_tokens.json (Giai đoạn 3.1)
     builder.add_node("gate_prd", GATE_PRD)   # BA reviews PRD
     builder.add_node("gate_design", GATE_DESIGN)  # Dev reviews Design Doc
     builder.add_node("ui", UI_NODE)          # UI Prototyper
@@ -211,10 +217,12 @@ def build_graph(checkpointer: Any | None = None) -> Any:
         "gate_design",
         route_gate_design,
         {
-            "ui": "ui",
+            "design_tokens": "design_tokens",
             "design": "design"
         }
     )
+
+    builder.add_edge("design_tokens", "ui")
 
     builder.add_edge("ui", "gate_mockup")
 

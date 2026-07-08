@@ -4,6 +4,7 @@
 # Save this file in the root of the `softwarefactory/` project and run:
 #   docker compose up -d
 # Adjust environment variables as needed in your `.env` file.
+name: sf-infra
 
 services:
   postgres:
