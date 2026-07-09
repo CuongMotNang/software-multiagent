@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Form Todo</title>
+<style>
+  body {
+    margin: 0;
+    padding: 32px;
+    background: #f7fafc;
+    color: #2d3748;
+    font-family: Inter, sans-serif;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div style="display:flex;flex-direction:column;gap:24px;"><div style="font-size:20px;font-weight:bold;margin-bottom:8px;">Tạo / Chỉnh sửa Todo</div><div style="margin-bottom:4px;"><label style="display:block;margin-bottom:4px;font-size:12px;">Tiêu đề *</label><input type="text" placeholder="Nhập tiêu đề" style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:4px;font-family:inherit;box-sizing:border-box;" /></div><div style="margin-bottom:4px;"><label style="display:block;margin-bottom:4px;font-size:12px;">Mô tả</label><input type="text" placeholder="Nhập mô tả (tùy chọn)" style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:4px;font-family:inherit;box-sizing:border-box;" /></div><div style="margin-bottom:4px;"><label style="display:block;margin-bottom:4px;font-size:12px;">Ngày hết hạn</label><input type="date" placeholder="" style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:4px;font-family:inherit;box-sizing:border-box;" /></div><div style="margin-bottom:8px;"><label style="display:block;margin-bottom:4px;">Mức độ ưu tiên</label><select style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:4px;"><option>{&#x27;value&#x27;: &#x27;low&#x27;, &#x27;label&#x27;: &#x27;Thấp&#x27;}</option><option>{&#x27;value&#x27;: &#x27;medium&#x27;, &#x27;label&#x27;: &#x27;Trung bình&#x27;}</option><option>{&#x27;value&#x27;: &#x27;high&#x27;, &#x27;label&#x27;: &#x27;Cao&#x27;}</option></select></div><label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><input type="checkbox"  />Hoàn thành</label><div style="display:flex;flex-direction:row;gap:12px;"><button style="background:#2f855a;color:#ffffff;border:none;padding:8px 16px;border-radius:6px;font-family:inherit;cursor:pointer;">Lưu</button><button style="background:#2f855a;color:#ffffff;border:none;padding:8px 16px;border-radius:6px;font-family:inherit;cursor:pointer;">Hủy</button></div></div>
+</body>
+</html>

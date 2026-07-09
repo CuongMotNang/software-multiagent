@@ -39,6 +39,25 @@ function extOf(name: string): string {
   return i === -1 ? "" : name.slice(i + 1).toLowerCase();
 }
 
+/** Prefix constant dùng để phân biệt nguồn tree node:
+ *  - "ws:"  → sandbox/workspace (artifacts, screenshots, PNG…)
+ *  - "proj:" → projects_data    (PRD, design, mockup JSON…)
+ *  Lưu trong node.path làm prefix, openFile() dùng để chọn base URL.
+ */
+const WS_PREFIX = "ws:";
+const PROJ_PREFIX = "proj:";
+
+function sourcePrefix(path: string): string {
+  return path.startsWith(PROJ_PREFIX) ? PROJ_PREFIX : WS_PREFIX;
+}
+
+function stripPrefix(path: string): string {
+  for (const p of [PROJ_PREFIX, WS_PREFIX]) {
+    if (path.startsWith(p)) return path.slice(p.length);
+  }
+  return path;
+}
+
 export function RepoBrowser({ threadId }: Props) {
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -52,28 +71,84 @@ export function RepoBrowser({ threadId }: Props) {
     if (!threadId) return;
     setLoadingTree(true);
     setError(null);
-    fetch(`/tree/${threadId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data: TreeNode) => {
-        setTree(data);
-        setExpanded(new Set([data.path])); // mở sẵn thư mục gốc
+
+    // Fetch cả 2 nguồn: sandbox workspace + project repo.
+    // Dùng Promise.allSettled để 1 nhánh 404 không làm fail nhánh kia.
+    Promise.allSettled([
+      fetch(`/tree/${threadId}`).then((r) => {
+        if (!r.ok) throw new Error(`workspace tree HTTP ${r.status}`);
+        return r.json() as Promise<TreeNode>;
+      }),
+      fetch(`/tree/project/${threadId}`).then((r) => {
+        if (!r.ok) throw new Error(`project tree HTTP ${r.status}`);
+        return r.json() as Promise<TreeNode>;
+      }),
+    ])
+      .then(([wsResult, projResult]) => {
+        // Wrap mỗi tree vào 1 node gốc với prefix riêng
+        const emptyNode: TreeNode = { name: "(trống)", type: "dir", path: "", children: [] };
+        const wsTree: TreeNode = wsResult.status === "fulfilled" ? wsResult.value : emptyNode;
+        const projTree: TreeNode = projResult.status === "fulfilled" ? projResult.value : emptyNode;
+
+        const wsNode: TreeNode = {
+          name: "📁 workspace (screenshots, build output)",
+          type: "dir",
+          path: `${WS_PREFIX}/`,
+          children: wsTree.children?.map(prefixNode(WS_PREFIX)) ?? [],
+        };
+        const projNode: TreeNode = {
+          name: "📁 project (PRD, design, mockup)",
+          type: "dir",
+          path: `${PROJ_PREFIX}/`,
+          children: projTree.children?.map(prefixNode(PROJ_PREFIX)) ?? [],
+        };
+        const merged: TreeNode = {
+          name: threadId,
+          type: "dir",
+          path: "",
+          children: [wsNode, projNode],
+        };
+        setTree(merged);
+        setExpanded(new Set(["", `${WS_PREFIX}/`, `${PROJ_PREFIX}/`]));
       })
       .catch((err) => setError(`Không tải được cây thư mục: ${err.message}`))
       .finally(() => setLoadingTree(false));
   }, [threadId]);
 
+  /** Đệ quy prefix path cho tất cả node con */
+  function prefixNode(prefix: string): (n: TreeNode) => TreeNode {
+    return (n: TreeNode) => ({
+      ...n,
+      path: `${prefix}${n.path}`,
+      children: n.children?.map(prefixNode(prefix)),
+    });
+  }
+
   const openFile = (node: TreeNode) => {
     if (!threadId) return;
     setSelected(node);
+
+    const rawPath = stripPrefix(node.path);
+    const src = sourcePrefix(node.path);
+
     if (IMAGE_EXT.has(extOf(node.name))) {
-      setContent(""); // ảnh không cần fetch text, render trực tiếp bằng <img>
+      if (src === PROJ_PREFIX) {
+        // Ảnh trong project repo → serve qua /repo
+        setContent(`/repo/${threadId}/${rawPath}`);
+      } else {
+        // Ảnh trong workspace → serve qua /artifacts
+        setContent(`/artifacts/${threadId}/${rawPath}`);
+      }
       return;
     }
+
     setLoadingFile(true);
-    fetch(`/artifacts/${threadId}/${node.path}`)
+    const url =
+      src === PROJ_PREFIX
+        ? `/repo/${threadId}/${rawPath}`
+        : `/artifacts/${threadId}/${rawPath}`;
+
+    fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.text();
@@ -130,7 +205,7 @@ export function RepoBrowser({ threadId }: Props) {
 
         {selected && IMAGE_EXT.has(extOf(selected.name)) && (
           <img
-            src={`/artifacts/${threadId}/${selected.path}`}
+            src={content || `/artifacts/${threadId}/${stripPrefix(selected.path)}`}
             alt={selected.name}
             style={{ maxWidth: "100%", border: "1px solid #eee", borderRadius: 4 }}
           />
@@ -139,7 +214,7 @@ export function RepoBrowser({ threadId }: Props) {
         {selected && !IMAGE_EXT.has(extOf(selected.name)) && (
           <>
             <div style={{ fontSize: 13, color: "#666", marginBottom: 12, fontFamily: "ui-monospace, monospace" }}>
-              {selected.path}
+              {stripPrefix(selected.path)}
             </div>
             {loadingFile ? (
               <div style={{ color: "#999" }}>Đang tải...</div>

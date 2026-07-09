@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Quản lý người dùng</title>
+<style>
+  body {
+    margin: 0;
+    padding: 32px;
+    background: #f7fafc;
+    color: #2d3748;
+    font-family: Inter, sans-serif;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div style="display:flex;flex-direction:column;gap:24px;"><div style="font-size:20px;font-weight:bold;margin-bottom:8px;">Quản lý người dùng</div><div style="border:1px solid #e8e8e8;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:16px;"><div style="font-weight:bold;margin-bottom:8px;">Thêm người dùng</div><div style="display:flex;flex-direction:row;gap:16px;"><div style="margin-bottom:4px;"><label style="display:block;margin-bottom:4px;font-size:12px;">Email *</label><input type="email" placeholder="" style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:4px;font-family:inherit;box-sizing:border-box;" /></div><div style="margin-bottom:8px;"><label style="display:block;margin-bottom:4px;">Vai trò</label><select style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:4px;"><option>{&#x27;value&#x27;: &#x27;user&#x27;, &#x27;label&#x27;: &#x27;Người dùng&#x27;}</option><option>{&#x27;value&#x27;: &#x27;admin&#x27;, &#x27;label&#x27;: &#x27;Quản trị&#x27;}</option></select></div><div style="margin-bottom:8px;"><label style="display:block;margin-bottom:4px;">Trạng thái</label><select style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:4px;"><option>{&#x27;value&#x27;: &#x27;active&#x27;, &#x27;label&#x27;: &#x27;Kích hoạt&#x27;}</option><option>{&#x27;value&#x27;: &#x27;inactive&#x27;, &#x27;label&#x27;: &#x27;Vô hiệu hoá&#x27;}</option></select></div><button style="background:#2f855a;color:#ffffff;border:none;padding:8px 16px;border-radius:6px;font-family:inherit;cursor:pointer;">Thêm</button></div></div><div style="border:1px solid #e8e8e8;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:16px;"><div style="font-weight:bold;margin-bottom:8px;">Danh sách người dùng</div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;"><thead><tr><th style="text-align:left;padding:8px;border-bottom:2px solid #2d3748;">{&#x27;key&#x27;: &#x27;email&#x27;, &#x27;header&#x27;: &#x27;Email&#x27;}</th><th style="text-align:left;padding:8px;border-bottom:2px solid #2d3748;">{&#x27;key&#x27;: &#x27;role&#x27;, &#x27;header&#x27;: &#x27;Vai trò&#x27;}</th><th style="text-align:left;padding:8px;border-bottom:2px solid #2d3748;">{&#x27;key&#x27;: &#x27;status&#x27;, &#x27;header&#x27;: &#x27;Trạng thái&#x27;}</th><th style="text-align:left;padding:8px;border-bottom:2px solid #2d3748;">{&#x27;key&#x27;: &#x27;actions&#x27;, &#x27;header&#x27;: &#x27;Hành động&#x27;}</th></tr></thead><tbody></tbody></table></div><div style="border:1px dashed #999;padding:16px;border-radius:8px;margin-bottom:8px;"><div style="font-size:12px;color:#999;">[Modal preview]</div><div style="font-weight:bold;">Xác nhận xóa</div><button style="margin-top:8px;">Open</button></div></div>
+</body>
+</html>

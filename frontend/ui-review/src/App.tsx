@@ -135,6 +135,7 @@ function ReviewApp() {
   const fetchLatestState = async (tid: string) => {
     try {
       const s = await client.threads.getState(tid);
+      const next = s.next || [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setSnapshotState((s.values as Record<string, any>) ?? {});
       setNextNodes(next);

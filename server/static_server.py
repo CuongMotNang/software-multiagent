@@ -15,7 +15,10 @@ from pathlib import Path
 import uvicorn
 
 SANDBOX_WORKSPACE = Path(__file__).resolve().parent.parent / "sandbox" / "workspace"
-PROJECTS_ROOT = Path(__file__).resolve().parent.parent / "projects"
+# Lưu ý: Dữ liệu projects thực tế được pipeline ghi vào projects_data/ (qua volume mount)
+# chứ không phải projects/ — projects/ là thư mục ảo, bị .gitignore bỏ qua
+# và hiện tại trống. projects_data/ chứa nội dung thật từ container.
+PROJECTS_ROOT = Path(__file__).resolve().parent.parent / "projects_data"
 
 app = FastAPI(title="SoftwareFactory Artifact Server")
 

@@ -83,7 +83,7 @@ class SoftwareFactoryState(BaseModel):
         "gate_code_review", "gate_test_result",
         "gate_deploy_confirm", "gate_business_signoff", ""
     ] = Field("", description="Gate đang chờ duyệt")
-    pending_gate_role: Literal["ba", "dev", "test", ""] = Field(
+    gate_decision: Literal["approve", "edit", "reject", "approve_with_edit"] | None = Field(
         "", description="Vai trò cần phê duyệt: ba | dev | test"
     )
     gate_decision: Literal["approve", "edit", "reject"] | None = Field(

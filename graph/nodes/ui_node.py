@@ -346,8 +346,11 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
             print(f"  ⚠️ PNG capture failed: {e}")
 
     # ━━ URL cho frontend ━━
+    # Lưu ý: frontend (App.tsx) tự thêm prefix "/artifacts/" khi render ảnh,
+    # nên ở đây chỉ lưu đường dẫn tương đối từ WORKSPACE_ROOT, KHÔNG có /artifacts/
+    # (không lặp lại prefix — tránh URL bị double /artifacts//artifacts/...)
     mockup_screenshots: list[str] = [
-        f"/artifacts/{p.relative_to(WORKSPACE_ROOT).as_posix()}"
+        p.relative_to(WORKSPACE_ROOT).as_posix()
         for p in png_paths
     ]
 

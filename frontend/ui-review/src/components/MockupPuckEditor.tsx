@@ -33,7 +33,7 @@ export function MockupPuckEditor({ projectId, slug, onSaved }: Props) {
     let cancelled = false;
     setData(null);
     setLoadError(null);
-    fetch(`/repo/project/${projectId}/mockup/screens/${slug}.json`)
+    fetch(`/repo/${projectId}/mockup/screens/${slug}.json`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -54,7 +54,7 @@ export function MockupPuckEditor({ projectId, slug, onSaved }: Props) {
     setSaving(true);
     try {
       const screen = puckDataToUIScreen(newData, screenMeta);
-      const res = await fetch(`/repo/project/${projectId}/mockup/screens/${slug}`, {
+      const res = await fetch(`/repo/${projectId}/mockup/screens/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(screen),
