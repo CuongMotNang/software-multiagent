@@ -6,10 +6,10 @@ import { ThreadDashboard } from "./components/ThreadDashboard";
 import { PipelineGraph } from "./components/PipelineGraph";
 import { MockupVersionHistory } from "./components/MockupVersionHistory";
 import { RepoBrowser } from "./components/RepoBrowser";
-
-const client = new Client({ apiUrl: "http://localhost:2024" });
+import { MockupPuckEditor } from "./components/MockupPuckEditor";
+const LANGGRAPH_API_URL = import.meta.env.VITE_LANGGRAPH_API_URL ?? "http://localhost:8123";
+const client = new Client({ apiUrl: LANGGRAPH_API_URL });
 const GRAPH_ID = "SoftwareFactory";
-
 type ActiveTab = "prd" | "design" | "mockup" | "files";
 
 class ErrorBoundary extends Component<
@@ -39,6 +39,8 @@ class ErrorBoundary extends Component<
 }
 
 function ReviewApp() {
+  const [mockupEditMode, setMockupEditMode] = useState(false);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("prd");
   const [feedback, setFeedback] = useState("");
   const [rawRequirements, setRawRequirements] = useState("Todo app");
@@ -59,7 +61,7 @@ function ReviewApp() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stream: any = useStream({
     client,
-    apiUrl: "http://localhost:2024",
+    apiUrl: LANGGRAPH_API_URL,
     threadId,
     assistantId: GRAPH_ID,
     onThreadId: setThreadId,
@@ -207,7 +209,7 @@ function ReviewApp() {
     }
   };
 
-  const handleGateSubmit = async (decision: "approve" | "reject") => {
+  const handleGateSubmit = async (decision: "approve" | "reject" | "approve_with_edit") => {
     if (!threadId) return;
     setSubmitError(null);
     setIsRunning(true);
@@ -215,10 +217,7 @@ function ReviewApp() {
     setCurrentNode("resuming");
     try {
       // dùng "action" thay vì "decision" — backend đọc field "action"
-      const resumeData = {
-        action: decision,
-        feedback: feedback.trim(),
-      };
+      const resumeData = { action: decision, feedback: feedback.trim() };
 
       console.log("[gate] Submitting:", resumeData);
       const runStream = client.runs.stream(threadId, GRAPH_ID, {
@@ -402,7 +401,33 @@ function ReviewApp() {
                 {state.design_markdown ?? state.design ?? "Design content not available yet."}
               </pre>
             )}
-            {activeTab === "mockup" &&
+            {activeTab === "mockup" && (
+              <div style={{ marginBottom: 12 }}>
+                <button onClick={() => setMockupEditMode((v) => !v)}>
+                  {mockupEditMode ? "🖼 Xem ảnh" : "✏️ Sửa tay (Puck)"}
+                </button>
+              </div>
+            )}
+            {activeTab === "mockup" && mockupEditMode && threadId && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(state.mockup_screenshots ?? []).map((imgPath: string, i: number) => {
+                  const slug = imgPath.split("/").pop()!.replace(/(\.preview)?\.png$/, "");
+                  return (
+                    <div key={i}>
+                      <button onClick={() => setEditingSlug(slug)}>{slug}</button>
+                      {editingSlug === slug && (
+                        <MockupPuckEditor
+                          projectId={threadId}
+                          slug={slug}
+                          onSaved={() => fetchLatestState(threadId)}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {activeTab === "mockup" && !mockupEditMode && (
               (state.mockup_screenshots && state.mockup_screenshots.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   {state.mockup_screenshots.map((imgPath: string, i: number) => (
@@ -432,9 +457,12 @@ function ReviewApp() {
                 />
               ) : (
                 <p style={{ color: "#999", fontSize: 13 }}>Mockup not available yet.</p>
-              ))}
+              )
+            ))}
           </div>
         )}
+
+
 
         {activeTab === "mockup" && (
           <MockupVersionHistory
@@ -494,6 +522,9 @@ function ReviewApp() {
                 }}
               >
                 ❌ Reject
+              </button>
+              <button onClick={() => handleGateSubmit("approve_with_edit")}>
+                ✅ Approve kèm sửa tay
               </button>
             </div>
           </div>

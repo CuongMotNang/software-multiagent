@@ -1,0 +1,5 @@
+services:
+  langgraph-api:
+    volumes:
+      - ./projects_data:/deps/softwarefactory/projects
+      - ./sandbox_data:/deps/softwarefactory/sandbox
