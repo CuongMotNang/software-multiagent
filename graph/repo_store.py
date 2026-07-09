@@ -192,29 +192,29 @@ def read_design(thread_id: str) -> str:
 
 
 def save_mockup_screens(thread_id: str, screens: list[dict]) -> list[Path]:
-    """Lưu nhiều màn hình HTML, mỗi lần gọi = 1 commit (có thể chứa nhiều file).
+    """Lưu nhiều màn hình, mỗi lần gọi = 1 commit (có thể chứa nhiều file).
 
     Không còn thư mục v{N} riêng — mỗi màn hình ghi đè đúng 1 file cố định
-    (``mockup/screens/{slug}.html``), lịch sử version xem qua ``list_versions()``
+    (``mockup/screens/{filename}``), lịch sử version xem qua ``list_versions()``
     (git log), không qua tên thư mục nữa.
 
-    Args:
-        screens: list[{"filename": "01_login.html", "html": "..."}]
+    Từ Giai đoạn 3.3: ``filename`` thường là ``.json`` (UI JSON), không còn
+    ``.html`` — hàm này không quan tâm định dạng, ``content`` là gì thì ghi
+    y nguyên, caller (ui_node) tự quyết định phần mở rộng.
 
-    Returns:
-        list[Path] tuyệt đối tới từng file HTML vừa ghi (PNG screenshot nên
-        lưu CÙNG thư mục này — ``mockup/screens/`` bị .gitignore loại trừ
-        *.png nên không bị commit, chỉ HTML mới track git).
+    Args:
+        screens: list[{"filename": "01_login.json", "content": "..."}]
+                 (chấp nhận cả key "html" cũ để không phá code gọi cũ)
     """
     d = _project_dir(thread_id)
     paths: list[Path] = []
     for screen in screens:
-        filename = screen.get("filename", "screen.html")
-        html = screen.get("html", "")
+        filename = screen.get("filename", "screen.json")
+        content = screen.get("content", screen.get("html", ""))
         relpath = f"mockup/screens/{filename}"
         p = d / relpath
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(html, encoding="utf-8")
+        p.write_text(content, encoding="utf-8")
         _run_git(d, "add", relpath)
         paths.append(p)
 
@@ -226,11 +226,11 @@ def save_mockup_screens(thread_id: str, screens: list[dict]) -> list[Path]:
     return paths
 
 
-def read_latest_mockup_screens(thread_id: str) -> list[Path]:
+def read_latest_mockup_screens(thread_id: str, pattern: str = "*.json") -> list[Path]:
     d = _project_dir(thread_id) / "mockup" / "screens"
     if not d.exists():
         return []
-    return sorted(d.glob("*.html"))
+    return sorted(d.glob(pattern))
 
 
 def save_test_report(thread_id: str, report: Dict[str, Any]) -> str:

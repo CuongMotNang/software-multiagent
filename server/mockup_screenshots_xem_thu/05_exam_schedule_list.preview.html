@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Danh sách lịch thi</title>
+<style>
+  body {
+    margin: 0;
+    padding: 32px;
+    background: #F9FAFB;
+    color: #212529;
+    font-family: Roboto, sans-serif;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div style="display:flex;flex-direction:column;gap:24px;"><div style="font-size:24px;font-weight:bold;margin-bottom:8px;">Lịch thi</div><div style="display:flex;flex-direction:row;gap:16px;"><div style="margin-bottom:8px;"><label style="display:block;margin-bottom:4px;">Trạng thái</label><select style="width:100%;padding:8px;border:1px solid #d9d9d9;border-radius:4px;"><option>{&#x27;value&#x27;: &#x27;all&#x27;, &#x27;label&#x27;: &#x27;Tất cả&#x27;}</option><option>{&#x27;value&#x27;: &#x27;pending&#x27;, &#x27;label&#x27;: &#x27;Đang chờ duyệt&#x27;}</option><option>{&#x27;value&#x27;: &#x27;ongoing&#x27;, &#x27;label&#x27;: &#x27;Đang diễn ra&#x27;}</option><option>{&#x27;value&#x27;: &#x27;completed&#x27;, &#x27;label&#x27;: &#x27;Hoàn thành&#x27;}</option></select></div><button style="background:#2C5F2D;color:#ffffff;border:none;padding:8px 16px;border-radius:6px;font-family:inherit;cursor:pointer;">Thêm lịch thi</button></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;"><thead><tr><th style="text-align:left;padding:8px;border-bottom:2px solid #212529;">{&#x27;header&#x27;: &#x27;Tên kỳ thi&#x27;, &#x27;field&#x27;: &#x27;examName&#x27;}</th><th style="text-align:left;padding:8px;border-bottom:2px solid #212529;">{&#x27;header&#x27;: &#x27;Môn học&#x27;, &#x27;field&#x27;: &#x27;subject&#x27;}</th><th style="text-align:left;padding:8px;border-bottom:2px solid #212529;">{&#x27;header&#x27;: &#x27;Ngày thi&#x27;, &#x27;field&#x27;: &#x27;date&#x27;}</th><th style="text-align:left;padding:8px;border-bottom:2px solid #212529;">{&#x27;header&#x27;: &#x27;Trạng thái&#x27;, &#x27;field&#x27;: &#x27;status&#x27;}</th><th style="text-align:left;padding:8px;border-bottom:2px solid #212529;">{&#x27;header&#x27;: &#x27;Hành động&#x27;, &#x27;field&#x27;: &#x27;actions&#x27;}</th></tr></thead><tbody><tr><td colspan="5" style="padding:8px;color:#999;font-style:italic;">(dữ liệu: examSchedules)</td></tr></tbody></table></div>
+</body>
+</html>

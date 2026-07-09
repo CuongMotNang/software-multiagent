@@ -253,13 +253,15 @@ def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
         # Fix bug: ui_node() không set state.mockup_html nữa (chuyển sang lưu
         # nhiều màn hình qua repo_store) — nếu không fallback ở đây,
         # engineer_node LUÔN nhận mockup rỗng dù mockup đã được duyệt.
-        # Ghép tất cả màn hình đã sinh thành 1 chuỗi HTML nhiều section.
-        screen_paths = read_latest_mockup_screens(thread_id)
+        # Từ Giai đoạn 3.3: mockup giờ là UI JSON (không phải HTML tự do) —
+        # vẫn đọc được bình thường làm ngữ cảnh text cho LLM, JSON có cấu
+        # trúc rõ ràng (type/props/children) còn dễ hiểu hơn HTML tự do.
+        screen_paths = read_latest_mockup_screens(thread_id)  # mặc định *.json
         if screen_paths:
             parts = []
             for p in screen_paths:
                 try:
-                    parts.append(f"<!-- Screen: {p.stem} -->\n{p.read_text(encoding='utf-8')}")
+                    parts.append(f"<!-- Screen: {p.stem} (UI JSON) -->\n{p.read_text(encoding='utf-8')}")
                 except Exception as e:
                     logger.warning(f"Không đọc được mockup screen {p}: {e}")
             mockup_html = "\n\n".join(parts)

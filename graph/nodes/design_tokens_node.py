@@ -19,24 +19,13 @@ from graph.state import (
 from graph.llm import llm_factory
 from graph.repo_store import save_design_tokens, read_design
 from graph.prompt_loader import load_prompt
+from graph.json_utils import strip_code_fence
 from graph.schemas import DesignTokens
-
-
-def _strip_code_fence(text: str) -> str:
-    """LLM đôi khi vẫn bọc ```json...``` dù prompt đã cấm — bóc ra trước khi parse."""
-    t = text.strip()
-    if t.startswith("```"):
-        t = t.split("\n", 1)[1] if "\n" in t else t
-        if t.endswith("```"):
-            t = t[: -3]
-        elif "```" in t:
-            t = t.rsplit("```", 1)[0]
-    return t.strip()
 
 
 def _parse_and_validate(raw: str) -> tuple[DesignTokens | None, str | None]:
     """Trả về (tokens, None) nếu hợp lệ, hoặc (None, error_message) nếu không."""
-    cleaned = _strip_code_fence(raw)
+    cleaned = strip_code_fence(raw)
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as e:

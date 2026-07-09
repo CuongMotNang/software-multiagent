@@ -8,6 +8,8 @@ không tự "phát minh" component mới (tránh JSON tham chiếu component kh�
 tồn tại trong Puck config, sẽ vỡ lúc render).
 """
 
+from typing import Any, Dict
+
 from pydantic import BaseModel, Field, field_validator
 
 STANDARD_COMPONENTS: list[str] = [
@@ -55,3 +57,37 @@ class DesignTokens(BaseModel):
                 f"Chỉ được chọn trong: {STANDARD_COMPONENTS}"
             )
         return v
+
+
+class UIComponentNode(BaseModel):
+    """1 node trong cây UI JSON của 1 màn hình (Giai đoạn 3.3).
+
+    ``type`` PHẢI nằm trong ``STANDARD_COMPONENTS`` — khớp đúng component có
+    config thật trong ``frontend/ui-review/src/lib/puckConfig.ts`` (Giai
+    đoạn 3.2), để sau này Puck editor (Giai đoạn 3.5) render được, không bị
+    vỡ vì gặp component không có config.
+    """
+
+    type: str
+    props: Dict[str, Any] = Field(default_factory=dict)
+    children: list["UIComponentNode"] = Field(default_factory=list)
+
+    @field_validator("type")
+    @classmethod
+    def _type_must_be_standard(cls, v: str) -> str:
+        if v not in STANDARD_COMPONENTS:
+            raise ValueError(
+                f"Component '{v}' không hợp lệ. Chỉ được chọn trong: {STANDARD_COMPONENTS}"
+            )
+        return v
+
+
+UIComponentNode.model_rebuild()
+
+
+class UIScreen(BaseModel):
+    """UI JSON của 1 màn hình — thay thế HTML tự do (Giai đoạn 3.3)."""
+
+    screen: str = Field(description="Slug màn hình, vd: '01_login'")
+    label: str = Field(description="Tên hiển thị, vd: 'Đăng nhập'")
+    root: list[UIComponentNode] = Field(min_length=1, description="Danh sách component gốc của màn hình")
