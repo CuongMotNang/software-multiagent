@@ -84,10 +84,7 @@ class SoftwareFactoryState(BaseModel):
         "gate_deploy_confirm", "gate_business_signoff", ""
     ] = Field("", description="Gate đang chờ duyệt")
     gate_decision: Literal["approve", "edit", "reject", "approve_with_edit"] | None = Field(
-        "", description="Vai trò cần phê duyệt: ba | dev | test"
-    )
-    gate_decision: Literal["approve", "edit", "reject"] | None = Field(
-        None, description="Quyết định cho gate hiện tại"
+        None, description="Quyết định cho gate hiện tại (approve / edit / reject / approve_with_edit)"
     )
     gate_history: Annotated[list[dict], operator.add] = Field(
         default_factory=list,

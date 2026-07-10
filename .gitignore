@@ -2,6 +2,17 @@
 # LangGraph API
 .langgraph_api
 
+# Virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Sandbox workspaces (generated code, not source)
+sandbox/workspace/
+
 # Nested git repos — mỗi project trong projects/ tự có .git riêng (xem repo_store.py)
 projects/
 

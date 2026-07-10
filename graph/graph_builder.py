@@ -126,14 +126,22 @@ def get_checkpointer() -> Any:
     return saver
 
 
+# "approve_with_edit" = BA/Dev tự sửa tay (vd: Puck editor ở gate_mockup)
+# rồi bấm approve — về mặt luồng phải xử lý y hệt "approve" (đi tiếp).
+# Trước đây các hàm route dưới đây chỉ so khớp đúng "approve", nên
+# "approve_with_edit" bị rơi vào nhánh default và bị coi như reject —
+# đây là bug, không phải hành vi cố ý.
+_APPROVE_DECISIONS = ("approve", "approve_with_edit")
+
+
 def route_gate_prd(state: SoftwareFactoryState) -> str:
     """Quyết định chuyển tiếp sau khi BA duyệt PRD.
 
-    Approve → tiếp tục sang design.
+    Approve (kể cả approve_with_edit) → tiếp tục sang design.
     Reject/Edit → lặp lại prd (không chạy lại ba).
     """
     decision = state.get("gate_decision") if isinstance(state, dict) else state.gate_decision
-    if decision == "approve":
+    if decision in _APPROVE_DECISIONS:
         return "design"
     elif decision in ["edit", "reject"]:
         return "prd"
@@ -143,11 +151,11 @@ def route_gate_prd(state: SoftwareFactoryState) -> str:
 def route_gate_design(state: SoftwareFactoryState) -> str:
     """Quyết định chuyển tiếp sau khi Dev duyệt Design Doc.
 
-    Approve → design_tokens (sinh design_tokens.json TRƯỚC khi vào ui —
-    Giai đoạn 3.1, để ui_node luôn có tokens sẵn khi sinh screen).
+    Approve (kể cả approve_with_edit) → design_tokens (sinh design_tokens.json
+    TRƯỚC khi vào ui — Giai đoạn 3.1, để ui_node luôn có tokens sẵn khi sinh screen).
     """
     decision = state.get("gate_decision") if isinstance(state, dict) else state.gate_decision
-    if decision == "approve":
+    if decision in _APPROVE_DECISIONS:
         return "design_tokens"
     elif decision in ["edit", "reject"]:
         return "design"
@@ -155,9 +163,13 @@ def route_gate_design(state: SoftwareFactoryState) -> str:
 
 
 def route_gate_mockup(state: SoftwareFactoryState) -> str:
-    """Quyết định chuyển tiếp sau khi BA duyệt Mockup UI."""
+    """Quyết định chuyển tiếp sau khi BA duyệt Mockup UI.
+
+    Approve (kể cả approve_with_edit — sửa tay qua Puck rồi bấm duyệt)
+    → đi tiếp sang engineer.
+    """
     decision = state.get("gate_decision") if isinstance(state, dict) else state.gate_decision
-    if decision == "approve":
+    if decision in _APPROVE_DECISIONS:
         return "engineer"
     elif decision in ["edit", "reject"]:
         return "ui"

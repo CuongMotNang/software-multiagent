@@ -15,6 +15,7 @@ import { Puck } from "@measured/puck";
 import "@measured/puck/puck.css";
 import { puckConfig } from "../lib/puckConfig";
 import { uiScreenToPuckData, puckDataToUIScreen } from "../lib/puckAdapter";
+import type { UIScreen } from "../lib/puckAdapter";
 import type { Data } from "@measured/puck";
 
 interface Props {
@@ -28,6 +29,7 @@ export function MockupPuckEditor({ projectId, slug, onSaved }: Props) {
   const [data, setData] = useState<Data | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +54,7 @@ export function MockupPuckEditor({ projectId, slug, onSaved }: Props) {
   const handlePublish = async (newData: Data) => {
     if (!screenMeta) return;
     setSaving(true);
+    setSaveWarning(null);
     try {
       const screen = puckDataToUIScreen(newData, screenMeta);
       const res = await fetch(`/repo/${projectId}/mockup/screens/${slug}`, {
@@ -59,7 +62,18 @@ export function MockupPuckEditor({ projectId, slug, onSaved }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(screen),
       });
-      if (!res.ok) throw new Error(`Lưu thất bại: HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail ? String(body.detail) : `Lưu thất bại: HTTP ${res.status}`);
+      }
+      const result = await res.json();
+      if (result?.preview_regenerated === false) {
+        // JSON đã lưu thành công (git commit OK) nhưng ảnh preview PNG
+        // chưa render lại được — vẫn coi là lưu thành công, chỉ cảnh báo.
+        setSaveWarning(
+          `Đã lưu, nhưng chưa render lại được ảnh preview: ${result.preview_warning ?? "không rõ lý do"}`
+        );
+      }
       onSaved?.();
     } catch (e) {
       setLoadError(String(e));
@@ -73,6 +87,11 @@ export function MockupPuckEditor({ projectId, slug, onSaved }: Props) {
 
   return (
     <div style={{ height: 600, border: "1px solid #e8e8e8", borderRadius: 6, position: "relative" }}>
+      {saveWarning && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, background: "#fffbe6", border: "1px solid #faad14", padding: "6px 10px", fontSize: 12, zIndex: 20 }}>
+          ⚠️ {saveWarning}
+        </div>
+      )}
       {saving && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.6)", zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
           Đang lưu…

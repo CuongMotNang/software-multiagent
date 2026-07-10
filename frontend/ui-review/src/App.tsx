@@ -38,9 +38,63 @@ class ErrorBoundary extends Component<
   }
 }
 
+/**
+ * Đọc 1 run stream (streamMode ["values","updates","custom"]) và cập nhật
+ * currentNode / nextNodes / interrupted / isRunning theo đúng thời gian thực.
+ *
+ * TRƯỚC ĐÂY: code cũ (2 chỗ, handleStart + handleGateSubmit) cố đọc field
+ * `next` từ event streamMode "values" để biết pipeline đã dừng ở gate_* hay
+ * chưa. Đây là DEAD CODE — LangGraph "values" mode trả về state channel
+ * values (khớp SoftwareFactoryState), object đó KHÔNG có field `next` (field
+ * đó chỉ có trên StateSnapshot trả về từ client.threads.getState()). Kiểm tra
+ * graph/state.py cũng xác nhận SoftwareFactoryState không định nghĩa field
+ * "next" nào. Nên nhánh đó không bao giờ chạy — banner "⏸ Awaiting Review"
+ * chỉ hiện được nhờ fetchLatestState() gọi SAU KHI cả stream đã đóng hẳn,
+ * không phải ngay lúc graph chạm gate.
+ *
+ * CÁCH ĐÚNG (theo tài liệu LangGraph — docs.langchain.com/oss/python/langgraph/interrupts):
+ * khi 1 node gọi interrupt() và graph tạm dừng, streamMode "updates" phát ra
+ * đúng 1 event có key đặc biệt "__interrupt__" — dùng event đó để detect
+ * real-time, không cần chờ stream đóng.
+ */
+async function consumeRunStream(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  runStream: AsyncIterable<any>,
+  handlers: {
+    setCurrentNode: (n: string) => void;
+    setNextNodes: (n: string[]) => void;
+    setInterrupted: (b: boolean) => void;
+    setIsRunning: (b: boolean) => void;
+  },
+  logPrefix: string
+) {
+  const { setCurrentNode, setNextNodes, setInterrupted, setIsRunning } = handlers;
+  for await (const event of runStream) {
+    if (event.event !== "updates" || !event.data) continue;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = event.data as Record<string, any>;
+    if ("__interrupt__" in data) {
+      const interruptsRaw = data.__interrupt__;
+      const first = Array.isArray(interruptsRaw) ? interruptsRaw[0] : interruptsRaw;
+      const gateName: string | undefined = first?.value?.gate;
+      console.log(`[${logPrefix}] Interrupted at gate:`, gateName ?? first);
+      if (gateName) setNextNodes([gateName]);
+      setInterrupted(true);
+      setIsRunning(false);
+    } else {
+      const nodeName = Object.keys(data)[0] ?? "?";
+      setCurrentNode(nodeName);
+    }
+  }
+}
+
 function ReviewApp() {
   const [mockupEditMode, setMockupEditMode] = useState(false);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  // Puck lưu xong sẽ ghi đè PNG cùng tên file — trình duyệt có thể vẫn hiển
+  // thị bản cache cũ vì URL không đổi. Đổi timestamp này mỗi lần lưu, dùng
+  // làm query param cache-buster cho <img>.
+  const [previewCacheBust, setPreviewCacheBust] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<ActiveTab>("prd");
   const [feedback, setFeedback] = useState("");
   const [rawRequirements, setRawRequirements] = useState("Todo app");
@@ -176,24 +230,11 @@ function ReviewApp() {
         streamMode: ["values", "updates", "custom"],
       });
 
-      for await (const event of runStream) {
-        if (event.event === "updates") {
-          const nodeName = event.data ? Object.keys(event.data)[0] : "?";
-          setCurrentNode(nodeName);
-        } else if (event.event === "values") {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const next = (event.data as any)?.next;
-          if (next && Array.isArray(next)) {
-            setNextNodes(next);
-            const isAtGate = next.some((n: string) => n.startsWith("gate_"));
-            if (isAtGate) {
-              setInterrupted(true);
-              setIsRunning(false);
-              console.log("[pipeline] Interrupted at gate:", next);
-            }
-          }
-        }
-      }
+      await consumeRunStream(
+        runStream,
+        { setCurrentNode, setNextNodes, setInterrupted, setIsRunning },
+        "pipeline"
+      );
 
       console.log("[pipeline] stream ended, fetching final state");
       await fetchLatestState(tid);
@@ -226,24 +267,11 @@ function ReviewApp() {
         streamMode: ["values", "updates", "custom"],
       });
 
-      for await (const event of runStream) {
-        if (event.event === "updates") {
-          const nodeName = event.data ? Object.keys(event.data)[0] : "?";
-          setCurrentNode(nodeName);
-        } else if (event.event === "values") {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const next = (event.data as any)?.next;
-          if (next && Array.isArray(next)) {
-            setNextNodes(next);
-            const isAtGate = next.some((n: string) => n.startsWith("gate_"));
-            if (isAtGate) {
-              setInterrupted(true);
-              setIsRunning(false);
-              console.log("[gate] Interrupted at next gate:", next);
-            }
-          }
-        }
-      }
+      await consumeRunStream(
+        runStream,
+        { setCurrentNode, setNextNodes, setInterrupted, setIsRunning },
+        "gate"
+      );
 
       console.log("[gate] stream ended, fetching final state");
       await fetchLatestState(threadId);
@@ -258,6 +286,12 @@ function ReviewApp() {
       setCurrentNode("");
     }
   };
+
+  // "approve_with_edit" (nút "Approve kèm sửa tay") phải được coi là 1 dạng
+  // approve khi hiển thị — trước đây so sánh cứng với "approve" nên bị vẽ
+  // nhầm thành Reject màu đỏ dù backend đã cho đi tiếp.
+  const isApproveDecision = (decision: string) =>
+    decision === "approve" || decision === "approve_with_edit";
 
   const renderGateHistory = () => {
     if (gateHistory.length === 0) return null;
@@ -282,11 +316,15 @@ function ReviewApp() {
                 <td style={{ padding: "6px 8px" }}>
                   <span
                     style={{
-                      color: entry.decision === "approve" ? "#52c41a" : "#ff4d4f",
+                      color: isApproveDecision(entry.decision) ? "#52c41a" : "#ff4d4f",
                       fontWeight: 600,
                     }}
                   >
-                    {entry.decision === "approve" ? "✅ Approve" : "❌ Reject"}
+                    {entry.decision === "approve_with_edit"
+                      ? "✅ Approve (sửa tay)"
+                      : isApproveDecision(entry.decision)
+                      ? "✅ Approve"
+                      : "❌ Reject"}
                   </span>
                 </td>
                 <td
@@ -420,7 +458,10 @@ function ReviewApp() {
                         <MockupPuckEditor
                           projectId={threadId}
                           slug={slug}
-                          onSaved={() => fetchLatestState(threadId)}
+                          onSaved={() => {
+                            setPreviewCacheBust(Date.now());
+                            fetchLatestState(threadId);
+                          }}
                         />
                       )}
                     </div>
@@ -437,7 +478,7 @@ function ReviewApp() {
                         📸 Màn hình {i + 1}: {imgPath.split("/").pop()}
                       </p>
                       <img
-                        src={`/artifacts/${imgPath}`}
+                        src={`/artifacts/${imgPath}${previewCacheBust ? `?v=${previewCacheBust}` : ""}`}
                         alt={`Screenshot ${i + 1}`}
                         style={{
                           width: "100%",
