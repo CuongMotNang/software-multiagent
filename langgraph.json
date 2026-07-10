@@ -9,6 +9,7 @@
   "env": ".env",
   "dockerfile_lines": [
   "RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*",
-  "RUN pip install playwright && playwright install --with-deps chromium"
+  "RUN pip install playwright && playwright install --with-deps chromium",
+  "RUN pip install uv && uv pip install --system -U openhands-sdk openhands-tools"
   ]
 }

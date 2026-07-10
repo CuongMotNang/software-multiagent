@@ -3,3 +3,7 @@ services:
     volumes:
       - ./projects_data:/deps/softwarefactory/projects
       - ./sandbox/workspace:/deps/softwarefactory/sandbox/workspace
+    environment:
+      # Dùng sf_postgres (docker-compose.yml) thay vì postgres nội bộ langgraph
+      DATABASE_URI: postgresql://sf_user:sf_pass@host.docker.internal:5433/softwarefactory?sslmode=disable
+      REDIS_URI: redis://host.docker.internal:6379/0
