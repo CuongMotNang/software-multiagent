@@ -207,6 +207,60 @@ async def save_mockup_screen(project_id: str, slug: str, screen: dict = Body(...
 app.mount("/repo", StaticFiles(directory=str(PROJECTS_ROOT)), name="repo")
 
 
+# ---------------------------------------------------------------------------
+# Bước 2: Route POST MỚI — nhận HTML/CSS trực tiếp từ GrapesJS editor.
+# Thay thế route POST cũ (Puck JSON) ở trên. Body: { html: str, css: str }.
+# Lưu .html + .css vào git, chụp lại PNG preview ngay (Playwright).
+# ---------------------------------------------------------------------------
+@app.post("/repo/{project_id}/mockup/screens/{slug}/html")
+async def save_mockup_screen_html(project_id: str, slug: str, body: dict = Body(...)):
+    """Lưu 1 màn hình HTML/CSS đã sửa tay qua GrapesJS editor."""
+    _validate_slug_like(project_id, "project_id")
+    _validate_slug_like(slug, "slug")
+
+    html = body.get("html", "")
+    css = body.get("css", "")
+
+    if not html:
+        raise HTTPException(status_code=422, detail="Thiếu field 'html' trong body")
+
+    full_html = html
+    if css:
+        if "<style" in full_html.lower():
+            full_html = full_html.replace("</style>", f"{css}\n</style>")
+        else:
+            full_html = f"<style>\n{css}\n</style>\n{full_html}"
+
+    files_to_save = [{"filename": f"{slug}.html", "content": full_html}]
+    if css:
+        files_to_save.append({"filename": f"{slug}.css", "content": css})
+
+    try:
+        save_mockup_screens(project_id, files_to_save)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lưu git thất bại: {e}")
+
+    preview_warning: str | None = None
+    try:
+        shot_dir = screenshot_dir(project_id)
+        preview_html_path = shot_dir / f"{slug}.preview.html"
+        preview_html_path.write_text(full_html, encoding="utf-8")
+
+        from graph.mockup_renderer import render_html_to_png
+
+        png_path = shot_dir / f"{slug}.preview.png"
+        render_html_to_png(preview_html_path, png_path)
+    except Exception as e:
+        preview_warning = str(e)
+
+    return {
+        "ok": True,
+        "slug": slug,
+        "preview_regenerated": preview_warning is None,
+        "preview_warning": preview_warning,
+    }
+
+
 if __name__ == "__main__":
     print(f"[static_server] Serving {SANDBOX_WORKSPACE} on http://0.0.0.0:3001")
     uvicorn.run(app, host="0.0.0.0", port=3001)

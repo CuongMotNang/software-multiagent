@@ -6,7 +6,7 @@ import { ThreadDashboard } from "./components/ThreadDashboard";
 import { PipelineGraph } from "./components/PipelineGraph";
 import { MockupVersionHistory } from "./components/MockupVersionHistory";
 import { RepoBrowser } from "./components/RepoBrowser";
-import { MockupPuckEditor } from "./components/MockupPuckEditor";
+import { MockupGrapesEditor } from "./components/MockupGrapesEditor";
 const LANGGRAPH_API_URL = import.meta.env.VITE_LANGGRAPH_API_URL ?? "http://localhost:8123";
 const client = new Client({ apiUrl: LANGGRAPH_API_URL });
 const GRAPH_ID = "SoftwareFactory";
@@ -443,7 +443,7 @@ function ReviewApp() {
             {activeTab === "mockup" && (
               <div style={{ marginBottom: 12 }}>
                 <button onClick={() => setMockupEditMode((v) => !v)}>
-                  {mockupEditMode ? "🖼 Xem ảnh" : "✏️ Sửa tay (Puck)"}
+                  {mockupEditMode ? "🖼 Xem ảnh" : "✏️ Sửa tay (GrapesJS)"}
                 </button>
               </div>
             )}
@@ -455,7 +455,7 @@ function ReviewApp() {
                     <div key={i}>
                       <button onClick={() => setEditingSlug(slug)}>{slug}</button>
                       {editingSlug === slug && (
-                        <MockupPuckEditor
+                          <MockupGrapesEditor
                           projectId={threadId}
                           slug={slug}
                           onSaved={() => {
