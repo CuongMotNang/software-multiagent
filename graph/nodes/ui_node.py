@@ -1,21 +1,19 @@
 """
-UINode: Generate UI JSON mockup screens (Giai đoạn 3.3) & render preview PNG
-(Giai đoạn 3.4).
+UINode: Generate HTML/CSS mockup screens trực tiếp (Giai đoạn 3.3) & render
+preview PNG (Giai đoạn 3.4).
 
-Trước Giai đoạn 3.3, node này sinh HTML tự do. Giờ sinh UI JSON theo schema
-cố định (graph/schemas.py: UIScreen/UIComponentNode) — chỉ dùng 9 component
-chuẩn khớp Puck config (frontend/ui-review/src/lib/puckConfig.ts). PNG vẫn
-chụp được như cũ nhờ bước trung gian render UI JSON -> HTML tĩnh
-(graph/ui_json_renderer.py) trước khi đưa vào Playwright.
+Từ Bước 1 (chuyển từ Puck sang GrapesJS): LLM sinh HTML/CSS tự do thay vì
+UI JSON schema. HTML được lưu trực tiếp vào git (mockup/screens/*.html),
+không cần bước trung gian render_screen_to_html(). PNG vẫn chụp qua Playwright
+từ chính HTML LLM sinh ra.
 """
 
-import json
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
-from pydantic import ValidationError
 
 from graph.state import (
     SoftwareFactoryState,
@@ -29,9 +27,9 @@ from graph.repo_store import (
     read_design_tokens,
     SANDBOX_ROOT,
 )
-from graph.schemas import DesignTokens, UIScreen
+from graph.schemas import DesignTokens
+import json
 from graph.json_utils import strip_code_fence
-from graph.ui_json_renderer import render_screen_to_html
 
 CUR_DIR = Path(__file__).parent.parent.resolve()
 PROMPT_DIR = CUR_DIR / ".." / "prompts"
@@ -150,12 +148,93 @@ def _list_screens_via_llm(state: SoftwareFactoryState) -> list[tuple[str, str]]:
     return screens
 
 
+# ---------------------------------------------------------------------------
+# HTML validation — lightweight parser check (thay Pydantic schema)
+# ---------------------------------------------------------------------------
+
+class _HTMLValidateParser(HTMLParser):
+    """HTMLParser đơn giản để kiểm tra HTML có lỗi cơ bản không.
+
+    Không nghiêm ngặt như validator W3C — chỉ bắt các lỗi rõ ràng:
+    thẻ mở/đóng không khớp, thẻ tự đóng sai (vd <div/>), attribute
+    thiếu giá trị. Đủ để phát hiện output LLM bị cắt ngang hoặc sai
+    cú pháp nặng.
+    """
+
+    _VOID_ELEMENTS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
+
+    def __init__(self):
+        super().__init__()
+        self.errors: list[str] = []
+        self._open_stack: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]):
+        tag_lower = tag.lower()
+        # Bắt tag tự đóng sai cú pháp: <div/> thay vì <div> (HTML5 không cho phép)
+        # HTMLParser không phân biệt, ta kiểm tra raw — nhưng ở đây chỉ log warning
+        if tag_lower not in self._VOID_ELEMENTS:
+            self._open_stack.append(tag_lower)
+
+    def handle_endtag(self, tag: str):
+        tag_lower = tag.lower()
+        if tag_lower in self._VOID_ELEMENTS:
+            self.errors.append(f"Thẻ void element <{tag}> không nên có thẻ đóng </{tag}>")
+            return
+        if not self._open_stack:
+            self.errors.append(f"Thẻ đóng </{tag}> không có thẻ mở tương ứng")
+            return
+        # Tìm thẻ mở khớp gần nhất (duyệt từ cuối stack)
+        found = False
+        for i in range(len(self._open_stack) - 1, -1, -1):
+            if self._open_stack[i] == tag_lower:
+                # Đóng tất cả thẻ con chưa đóng bên trong
+                unclosed = self._open_stack[i + 1:]
+                for uc in unclosed:
+                    self.errors.append(f"Thẻ <{uc}> chưa được đóng trước khi đóng </{tag_lower}>")
+                self._open_stack = self._open_stack[:i]
+                found = True
+                break
+        if not found:
+            self.errors.append(f"Thẻ đóng </{tag}> không khớp với thẻ mở nào trong stack")
+
+    def handle_data(self, data: str):
+        pass  # text content không cần validate
+
+    def finalize(self):
+        """Gọi sau khi parse xong — kiểm tra thẻ còn mở."""
+        if self._open_stack:
+            self.errors.append(
+                f"Còn {len(self._open_stack)} thẻ chưa đóng: {', '.join(self._open_stack)}"
+            )
+
+
+def _validate_html(html: str) -> str | None:
+    """Validate HTML cơ bản. Trả về None nếu OK, hoặc string mô tả lỗi."""
+    if not html.strip():
+        return "HTML rỗng — LLM không trả về nội dung"
+    # Kiểm tra có ít nhất 1 thẻ HTML thực sự (không chỉ text thuần)
+    if not re.search(r'<\s*(\w+)', html):
+        return "Không tìm thấy thẻ HTML nào — output có thể là plain text, không phải HTML"
+    parser = _HTMLValidateParser()
+    try:
+        parser.feed(html)
+        parser.finalize()
+    except Exception as e:
+        return f"HTML parser crash: {e}"
+    if parser.errors:
+        # Giới hạn 5 lỗi đầu để không làm prompt retry quá dài
+        return "HTML validation errors: " + "; ".join(parser.errors[:5])
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Phase 2 – generate one HTML per screen
 # ---------------------------------------------------------------------------
 
-def _generate_screen_json(
+def _generate_screen_html(
     screen_slug: str,
     screen_label: str,
     design: str,
@@ -163,11 +242,12 @@ def _generate_screen_json(
     tokens_json: str,
     previous_screens_summary: str,
 ):
-    """Sinh UI JSON cho 1 màn hình — validate schema, retry 1 lần nếu sai.
+    """Sinh HTML/CSS cho 1 màn hình — validate HTML cơ bản, retry 1 lần nếu sai.
 
-    Trả về (UIScreen | None, llm_response, error_message | None).
+    Trả về (html_content | None, llm_response, error_message | None).
+    LLM trả về raw HTML (không code fence), ta strip fence + validate.
     """
-    system_prompt = _read_prompt("ui_screen_json_system.txt")
+    system_prompt = _read_prompt("ui_screen_html_system.txt")
     prd_summary = prd[:2000] if prd else ""
 
     user_msg_base = f"""THIẾT KẾ TỔNG THỂ:
@@ -179,7 +259,7 @@ YÊU CẦU CHỨC NĂNG:
 DESIGN TOKENS (BẮT BUỘC dùng đúng màu/spacing/typography trong này):
 {tokens_json}
 
-CÁC MÀN HÌNH ĐÃ SINH TRƯỚC ĐÓ (để nhất quán style/cách đặt tên field):
+CÁC MÀN HÌNH ĐÃ SINH TRƯỚC ĐÓ (để nhất quán style/class name):
 {previous_screens_summary or '(chưa có màn hình nào trước đó)'}
 
 SCREEN CẦN SINH: {screen_slug} | {screen_label}
@@ -190,29 +270,23 @@ SCREEN CẦN SINH: {screen_slug} | {screen_label}
         user_msg = user_msg_base
         if attempt > 0:
             user_msg += (
-                f"\n\nLẦN TRƯỚC BẠN TRẢ VỀ JSON SAI, LỖI CỤ THỂ:\n{last_error}\n"
-                "Hãy sửa lại và CHỈ trả về đúng 1 khối JSON hợp lệ theo đúng schema, không kèm gì khác."
+                f"\n\nLẦN TRƯỚC BẠN TRẢ VỀ HTML SAI, LỖI CỤ THỂ:\n{last_error}\n"
+                "Hãy sửa lại và CHỈ trả về đúng 1 khối HTML hợp lệ (đầy đủ thẻ mở/đóng), không kèm gì khác."
             )
         prompt = f"{system_prompt}\n\n{user_msg}"
-        llm_response = _ask_llm(prompt, max_tokens=4096, temperature=0.3)
+        llm_response = _ask_llm(prompt, max_tokens=8000, temperature=0.3)
 
         if llm_response.content is None:
             last_error = "LLM không trả về nội dung (network/API error)"
             continue
 
         cleaned = strip_code_fence(llm_response.content)
-        try:
-            data = json.loads(cleaned)
-        except json.JSONDecodeError as e:
-            last_error = f"JSON không hợp lệ: {e}"
-            continue
-        try:
-            screen = UIScreen.model_validate(data)
-        except ValidationError as e:
-            last_error = f"Sai schema: {e}"
+        html_err = _validate_html(cleaned)
+        if html_err is not None:
+            last_error = html_err
             continue
 
-        return screen, llm_response, None
+        return cleaned, llm_response, None
 
     return None, llm_response, last_error
 
@@ -242,7 +316,7 @@ def _capture_screens_to(html_paths: list[Path], output_dir: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, **kwargs) -> dict[str, Any]:
-    print("\n🚀 UINode: generating UI JSON mockup screens...")
+    print("\n🚀 UINode: generating HTML/CSS mockup screens...")
 
     thread_id = "default"
     if config:
@@ -286,11 +360,11 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
         ]
     print(f"  ✓ Sẽ generate {len(screens)} màn hình: {[s for s, _ in screens]}")
 
-    # ── generate UI JSON từng màn hình — mỗi lần gọi kèm CONTEXT các màn
-    # hình đã sinh trước đó trong CÙNG lần chạy này (đúng yêu cầu "ngữ cảnh
-    # bắt buộc" ở Giai đoạn 3.2: nhất quán style/field-naming giữa các màn) ──
-    generated_json: list[dict] = []       # [{"filename": ..., "content": json_str}]
-    generated_screens: list[UIScreen] = []  # để render_screen_to_html ở bước PNG
+    # ── generate HTML/CSS từng màn hình — mỗi lần gọi kèm CONTEXT các màn
+    # hình đã sinh trước đó trong CÙNG lần chạy này (nhất quán style/class
+    # name giữa các màn) ──
+    generated_files: list[dict] = []      # [{"filename": ..., "content": html_str}]
+    generated_html_paths: list[Path] = []  # để chụp PNG ở bước sau
     previous_summary_lines: list[str] = []
     total_tokens = 0
     model_used = ""
@@ -299,48 +373,43 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
     for slug, label in screens:
         print(f"  → generating {slug} ({label})...")
         previous_summary = "\n".join(previous_summary_lines) if previous_summary_lines else ""
-        screen, llm_response, error = _generate_screen_json(
+        html_str, llm_response, error = _generate_screen_html(
             slug, label, design, prd, tokens_json, previous_summary
         )
         total_tokens += llm_response.total_tokens
         model_used = llm_response.model or model_used
 
-        if screen is None:
+        if html_str is None:
             print(f"  ⚠️ Screen '{slug}' thất bại sau retry: {error}")
             failed_screens.append(slug)
             continue
 
-        screen_json_str = json.dumps(screen.model_dump(), indent=2, ensure_ascii=False)
-        generated_json.append({"filename": f"{slug}.json", "content": screen_json_str})
-        generated_screens.append(screen)
+        generated_files.append({"filename": f"{slug}.html", "content": html_str})
 
-        used_types = sorted({n.type for n in screen.root} | {
-            c.type for n in screen.root for c in n.children
-        })
-        previous_summary_lines.append(f"- {slug} ({label}): dùng {', '.join(used_types)}")
+        # Đoán các class CSS chính được dùng để tóm tắt cho context màn sau
+        class_names = set(re.findall(r'class="([^"]+)"', html_str))
+        tag_summary = ", ".join(sorted(class_names)[:6]) if class_names else "không rõ"
+        previous_summary_lines.append(f"- {slug} ({label}): class chính [{tag_summary}]")
 
-    # ── lưu UI JSON vào git repo project (1 commit/lần) ──
-    json_paths: list[Path] = save_mockup_screens(thread_id, generated_json)
-    if json_paths:
-        print(f"  ✓ Đã lưu {len(json_paths)} file UI JSON vào git repo project ({thread_id})")
+    # ── lưu HTML vào git repo project (1 commit/lần) ──
+    html_paths: list[Path] = save_mockup_screens(thread_id, generated_files)
+    if html_paths:
+        print(f"  ✓ Đã lưu {len(html_paths)} file HTML vào git repo project ({thread_id})")
 
-    # ── Giai đoạn 3.4: render UI JSON -> HTML tĩnh (preview, KHÔNG track
-    # git — cùng chỗ với PNG) rồi mới chụp PNG như cũ qua Playwright ──
+    # ── Giai đoạn 3.4: chụp PNG TRỰC TIẾP từ HTML LLM sinh (không cần
+    # render_screen_to_html() trung gian nữa — HTML đã là HTML) ──
     shot_dir = screenshot_dir(thread_id)
-    preview_html_paths: list[Path] = []
-    for screen in generated_screens:
-        try:
-            preview_html = render_screen_to_html(screen, tokens)
-            preview_path = shot_dir / f"{screen.screen}.preview.html"
-            preview_path.write_text(preview_html, encoding="utf-8")
-            preview_html_paths.append(preview_path)
-        except Exception as e:
-            print(f"  ⚠️ Render preview HTML thất bại cho '{screen.screen}': {e}")
+    # Ghi HTML preview vào sandbox để Playwright đọc
+    for entry in generated_files:
+        slug = entry["filename"].replace(".html", "")
+        preview_path = shot_dir / f"{slug}.preview.html"
+        preview_path.write_text(entry["content"], encoding="utf-8")
+        generated_html_paths.append(preview_path)
 
     png_paths: list[Path] = []
-    if preview_html_paths:
+    if generated_html_paths:
         try:
-            png_paths = _capture_screens_to(preview_html_paths, shot_dir)
+            png_paths = _capture_screens_to(generated_html_paths, shot_dir)
             print(f"  ✓ {len(png_paths)} screenshot PNG captured → {shot_dir}")
         except Exception as e:
             print(f"  ⚠️ PNG capture failed: {e}")
@@ -362,8 +431,8 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
         model=model_used,
     )
     status_note = f" ({len(failed_screens)} lỗi: {failed_screens})" if failed_screens else ""
-    screens_summary = f"{len(generated_screens)}/{len(screens)} màn hình (UI JSON){status_note}: " + ", ".join(
-        s.screen for s in generated_screens
+    screens_summary = f"{len(generated_files)}/{len(screens)} màn hình (HTML){status_note}: " + ", ".join(
+        f["filename"].replace(".html", "") for f in generated_files
     )
     content_history = push_content_history(state.content_history, "ui", screens_summary)
 

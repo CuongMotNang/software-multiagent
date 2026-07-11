@@ -1,4 +1,7 @@
-"""Render UI JSON (Giai đoạn 3.3) sang HTML tĩnh — dùng để Playwright chụp
+"""@deprecated Bước 1 (2026-07-11) — Puck editor + UIScreen renderer bị thay thế
+bởi GrapesJS. File này được giữ lại để tham khảo, sẽ bị xóa ở Bước 2.
+
+Render UI JSON (Giai đoạn 3.3) sang HTML tĩnh — dùng để Playwright chụp
 PNG preview (Giai đoạn 3.4).
 
 QUAN TRỌNG — đây KHÔNG phải Puck thật: package ``@measured/puck`` chưa được

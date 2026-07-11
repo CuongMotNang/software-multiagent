@@ -1,4 +1,7 @@
 /**
+ * @deprecated Bước 1 (2026-07-11) — Puck editor bị thay thế bởi GrapesJS.
+ * File này được giữ lại để tham khảo, sẽ bị xóa ở Bước 2.
+ *
  * Chuyển đổi 2 chiều giữa UIScreen (JSON lưu trên git, khớp
  * `graph/schemas.py`) và Puck `Data` (định dạng editor dùng để render/sửa).
  *

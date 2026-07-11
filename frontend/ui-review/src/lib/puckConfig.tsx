@@ -1,4 +1,7 @@
 /**
+ * @deprecated Bước 1 (2026-07-11) — Puck editor bị thay thế bởi GrapesJS.
+ * File này được giữ lại để tham khảo, sẽ bị xóa ở Bước 2.
+ *
  * Bộ component chuẩn dùng cho UI JSON (Giai đoạn 3.2 → 3.5).
  *
  * QUAN TRỌNG — ĐỒNG BỘ TAY: danh sách tên component ở đây PHẢI khớp với

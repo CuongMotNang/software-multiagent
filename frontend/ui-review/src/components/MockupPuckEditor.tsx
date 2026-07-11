@@ -1,4 +1,7 @@
 /**
+ * @deprecated Bước 1 (2026-07-11) — Puck editor bị thay thế bởi GrapesJS.
+ * File này được giữ lại để tham khảo, sẽ bị xóa ở Bước 2.
+ *
  * Giai đoạn 3.5 — Puck editor cho gate_mockup.
  *
  * Load UI JSON mới nhất của 1 màn hình từ /repo/project/{projectId}/mockup/screens/{slug}.json

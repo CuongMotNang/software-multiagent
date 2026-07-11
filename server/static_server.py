@@ -25,8 +25,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import graph.repo_store as repo_store  # noqa: E402  (import sau khi chỉnh sys.path)
 from graph.repo_store import read_design_tokens, save_mockup_screens, screenshot_dir  # noqa: E402
-from graph.schemas import DesignTokens, UIScreen  # noqa: E402
-from graph.ui_json_renderer import render_screen_to_html  # noqa: E402
+
+# ── Transitional (Bước 1): Puck → GrapesJS ──
+# ui_node.py không còn import UIScreen/render_screen_to_html nữa (đã chuyển
+# sang sinh HTML trực tiếp). static_server vẫn import để route POST cũ
+# không crash — nhưng bọc try-except để server vẫn khởi động được nếu các
+# module này bị xóa sau này.
+try:
+    from graph.schemas import DesignTokens, UIScreen  # noqa: E402
+    from graph.ui_json_renderer import render_screen_to_html  # noqa: E402
+    _PUCK_AVAILABLE = True
+except ImportError:
+    _PUCK_AVAILABLE = False
 
 SANDBOX_WORKSPACE = Path(__file__).resolve().parent.parent / "sandbox" / "workspace"
 # Lưu ý: Dữ liệu projects thực tế được pipeline ghi vào projects_data/ (qua volume mount)
@@ -138,19 +148,15 @@ async def health():
 # ---------------------------------------------------------------------------
 @app.post("/repo/{project_id}/mockup/screens/{slug}")
 async def save_mockup_screen(project_id: str, slug: str, screen: dict = Body(...)):
-    """Lưu 1 màn hình UI JSON đã sửa tay qua Puck editor.
+    """[DEPRECATED — Bước 1] Lưu 1 màn hình UI JSON đã sửa tay qua Puck editor.
 
-    - Validate đúng schema UIScreen (khớp validate mà ui_node dùng khi LLM tự
-      sinh — không cho phép component type lạ lọt vào, tránh vỡ renderer).
-    - Ghi đè file + tạo 1 git commit mới (qua repo_store.save_mockup_screens,
-      cùng hàm pipeline dùng).
-    - Render lại HTML + chụp lại PNG preview NGAY, để ảnh preview luôn khớp
-      với những gì vừa sửa trên Puck (trước đây preview chỉ được render 1 lần
-      lúc ui_node chạy — sửa tay xong không có gì regenerate nó, nên 2 bên
-      lệch nhau). Bước render PNG là best-effort: nếu thất bại (vd máy này
-      chưa cài Playwright, hoặc design_tokens.json chưa có), JSON vẫn coi là
-      lưu thành công, chỉ trả cảnh báo riêng.
+    Route này sẽ bị xóa hoặc thay thế bằng route save HTML trực tiếp ở Bước 2
+    (chuyển Puck → GrapesJS). Hiện tại vẫn hoạt động nếu _PUCK_AVAILABLE=True,
+    nhưng không còn được gọi từ frontend mới (MockupGrapesEditor).
     """
+    if not _PUCK_AVAILABLE:
+        raise HTTPException(status_code=410, detail="Puck editor đã bị deprecated — dùng GrapesJS thay thế (Bước 1-2)")
+
     _validate_slug_like(project_id, "project_id")
     _validate_slug_like(slug, "slug")
 
@@ -192,6 +198,7 @@ async def save_mockup_screen(project_id: str, slug: str, screen: dict = Body(...
     return {
         "ok": True,
         "screen": validated.screen,
+        "deprecated": True,
         "preview_regenerated": preview_warning is None,
         "preview_warning": preview_warning,
     }
