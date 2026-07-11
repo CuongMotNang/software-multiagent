@@ -1,13 +1,18 @@
 /**
  * Bước 2 — GrapesJS editor thay thế MockupPuckEditor.
  *
- * Load HTML/CSS hiện có của 1 screen từ
- *   GET /repo/{project_id}/mockup/screens/{slug}.html  (qua StaticFiles)
+ * Load HTML preview hiện có của 1 screen từ
+ *   GET /artifacts/{project_id}/mockup_screenshots/{slug}.preview.html
+ * (sandbox/workspace, đã có cho cả project cũ lẫn mới — xem screenshot_dir()
+ * trong repo_store.py). File preview là HTML đầy đủ (<!DOCTYPE>+<head>+<style>
+ * inline+body) nên GrapesJS parse được luôn, không cần fetch .css riêng.
+ *
  * Cho sửa trên canvas GrapesJS (preset-webpage: panel block, Style Manager,
  * Layer Manager, toolbar), rồi nút Save gọi:
- *   POST /repo/{project_id}/mockup/screens/{slug}
- * với body { html: string, css: string } — route mới trong static_server.py
- * lưu .html + .css vào git + chụp lại PNG preview ngay.
+ *   POST /repo/{project_id}/mockup/screens/{slug}/html
+ * với body { html: string, css: string } — route trong static_server.py
+ * lưu .html + .css vào git (projects_data) + regenerate .preview.html + PNG
+ * ngay (route POST ghi preview vào sandbox qua screenshot_dir()).
  *
  * Rủi ro đã xử lý:
  * - editor.destroy() gọi khi unmount (canvas iframe leak listener nếu quên).
@@ -37,14 +42,20 @@ export function MockupGrapesEditor({ projectId, slug, onSaved }: Props) {
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const editorRefStable = useRef<EditorAny>(null);
 
-  // Load HTML/CSS hiện có của screen từ /repo/...
+  // Load HTML preview hiện có của screen.
+  // Pipeline (cũ + mới) đều ghi {slug}.preview.html vào sandbox/workspace
+  // (xem graph/repo_store.py screenshot_dir() → SANDBOX_ROOT/workspace/{id}/mockup_screenshots/).
+  // static_server.py mount sandbox/workspace dưới /artifacts, nên load qua:
+  //   GET /artifacts/{projectId}/mockup_screenshots/{slug}.preview.html
+  // File preview này là HTML đầy đủ (<!DOCTYPE>+<head>+<style> inline+body) —
+  // GrapesJS parse được luôn, không cần fetch .css riêng.
   useEffect(() => {
     let cancelled = false;
     setHtmlContent(null);
     setLoadError(null);
     setCssContent("");
 
-    fetch(`/repo/${projectId}/mockup/screens/${slug}.html`)
+    fetch(`/artifacts/${projectId}/mockup_screenshots/${slug}.preview.html`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.text();
@@ -55,25 +66,12 @@ export function MockupGrapesEditor({ projectId, slug, onSaved }: Props) {
       })
       .catch((e) => {
         if (cancelled) return;
-        // Nếu .html chưa có (project cũ chỉ có .json), dùng template rỗng
+        // Nếu preview chưa có (màn chưa từng render), dùng template rỗng
         if (String(e).includes("404")) {
           setHtmlContent("<div><!-- Chưa có HTML cho màn hình này — bắt đầu soạn thảo --></div>");
         } else {
           setLoadError(String(e));
         }
-      });
-
-    // CSS cũng load nếu có (lưu riêng .css cùng thư mục)
-    fetch(`/repo/${projectId}/mockup/screens/${slug}.css`)
-      .then((r) => {
-        if (!r.ok) return "";
-        return r.text();
-      })
-      .then((css) => {
-        if (!cancelled) setCssContent(css);
-      })
-      .catch(() => {
-        /* CSS không bắt buộc — nếu lỗi thì để trống */
       });
 
     return () => {
