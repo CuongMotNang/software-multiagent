@@ -1,0 +1,99 @@
+diff --git a/frontend/ui-review/src/components/ThreadDashboard.tsx b/frontend/ui-review/src/components/ThreadDashboard.tsx
+index 9c006a1..5d8f7bb 100644
+--- a/frontend/ui-review/src/components/ThreadDashboard.tsx
++++ b/frontend/ui-review/src/components/ThreadDashboard.tsx
+@@ -20,43 +20,63 @@ export function ThreadDashboard({ client, activeThreadId, onSelect, onCreateNew
+   const [loading, setLoading] = useState(false);
+   const [showIdle, setShowIdle] = useState(false);
+ 
++  const [loadError, setLoadError] = useState<string | null>(null);
++
+   const loadThreads = async () => {
+     setLoading(true);
++    setLoadError(null);
++    let result: ThreadInfo[] = [];
+     try {
+       const threadsClient = client.threads;
+       const [interruptedResult, busyResult] = await Promise.all([
+         threadsClient.search({ status: "interrupted", limit: 50 }),
+         threadsClient.search({ status: "busy", limit: 50 }),
+       ]);
++      result = [...interruptedResult, ...busyResult];
++    } catch (e) {
++      console.error("[ThreadDashboard] load interrupted/busy error", e);
++      setLoadError(`Không tải được danh sách thread: ${String(e)}`);
++      setLoading(false);
++      return;
++    }
+ 
+-      let result: ThreadInfo[] = [...interruptedResult, ...busyResult];
+-
+-      if (showIdle) {
+-        const idleResult = await threadsClient.search({ status: "idle", limit: 50 });
++    // Tách riêng fetch "idle" (thread đã dừng) khỏi try/catch ở trên: nếu
++    // request này lỗi, KHÔNG được để nó xoá mất kết quả interrupted/busy đã
++    // fetch thành công — trước đây cả 2 nhóm request nằm chung 1 try/catch,
++    // nên hễ request idle lỗi (timeout, backend tạm trục trặc...) là
++    // setThreads() không bao giờ được gọi, danh sách trông như trống trơn dù
++    // interrupted/busy đã có kết quả.
++    if (showIdle) {
++      try {
++        const idleResult = await client.threads.search({ status: "idle", limit: 50 });
+         result = [...result, ...idleResult];
++      } catch (e) {
++        console.error("[ThreadDashboard] load idle error", e);
++        setLoadError(`Không tải được thread đã dừng: ${String(e)}`);
++        // Vẫn tiếp tục hiển thị interrupted/busy đã có, không return sớm.
+       }
++    }
+ 
+-      const seen = new Set<string>();
+-      const filtered: ThreadInfo[] = [];
+-      for (const t of result) {
+-        if (!seen.has(t.thread_id)) {
+-          seen.add(t.thread_id);
+-          filtered.push(t);
+-        }
++    const seen = new Set<string>();
++    const filtered: ThreadInfo[] = [];
++    for (const t of result) {
++      if (!seen.has(t.thread_id)) {
++        seen.add(t.thread_id);
++        filtered.push(t);
+       }
+-
+-      filtered.sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
+-      setThreads(filtered);
+-    } catch (e) {
+-      console.error("[ThreadDashboard] load error", e);
+-    } finally {
+-      setLoading(false);
+     }
++
++    filtered.sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
++    setThreads(filtered);
++    setLoading(false);
+   };
+ 
+   useEffect(() => {
+     loadThreads();
+-    if (showIdle) return;
++    // Trước đây tắt hẳn auto-refresh khi showIdle=true — nghĩa là nếu lần
++    // load đầu tiên gặp lỗi tạm thời (mạng, backend), danh sách sẽ đứng yên
++    // mãi cho tới khi tự tick/untick lại checkbox. Giữ interval chạy trong
++    // mọi trường hợp để tự phục hồi.
+     const iv = setInterval(loadThreads, 10_000);
+     return () => clearInterval(iv);
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+@@ -98,6 +118,11 @@ export function ThreadDashboard({ client, activeThreadId, onSelect, onCreateNew
+         </label>
+       </div>
+ 
++      {loadError && (
++        <p style={{ color: "#ff4d4f", fontSize: 11, background: "#fff1f0", padding: "6px 8px", borderRadius: 4, marginBottom: 8 }}>
++          ⚠️ {loadError}
++        </p>
++      )}
+       {loading && threads.length === 0 && <p style={{ color: "#999", fontSize: 12 }}>Đang tải...</p>}
+       {threads.map((t) => (
+         <div key={t.thread_id}

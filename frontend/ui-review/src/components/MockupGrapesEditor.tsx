@@ -175,6 +175,7 @@ export function MockupGrapesEditor({ projectId, slug, onSaved }: Props) {
             plugins: [presetWebpage],
             components: htmlContent,
             style: initialStyle,
+            dragMode: "absolute",
           }}
           onEditor={(editor: EditorAny) => {
             editorRefStable.current = editor;

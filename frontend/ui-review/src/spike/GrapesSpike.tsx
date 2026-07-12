@@ -172,6 +172,7 @@ export function GrapesSpike() {
             storageManager: false,
             plugins: [presetWebpage],
             components: "<h1>Test</h1><p>Xin chào từ GrapesJS</p>",
+            dragMode: "absolute",
           }}
           onEditor={(editor: EditorAny) => {
             setEditorRef(editor);
