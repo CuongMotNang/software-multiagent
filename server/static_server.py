@@ -11,6 +11,7 @@ Usage:
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +32,11 @@ from graph.repo_store import read_design_tokens, save_mockup_screens, screenshot
 # sang sinh HTML trực tiếp). static_server vẫn import để route POST cũ
 # không crash — nhưng bọc try-except để server vẫn khởi động được nếu các
 # module này bị xóa sau này.
+from graph.repo_store import AGENT_WORKSPACE_ROOT, screenshot_dir
+
+# Xoá hoặc comment đoạn tính PROJECTS_ROOT cũ, thay bằng:
+PROJECTS_ROOT = AGENT_WORKSPACE_ROOT  # luôn trỏ đúng vào projects_data
+print(PROJECTS_ROOT, AGENT_WORKSPACE_ROOT)
 try:
     from graph.schemas import DesignTokens, UIScreen  # noqa: E402
     from graph.ui_json_renderer import render_screen_to_html  # noqa: E402
@@ -38,21 +44,20 @@ try:
 except ImportError:
     _PUCK_AVAILABLE = False
 
-SANDBOX_WORKSPACE = Path(__file__).resolve().parent.parent / "sandbox" / "workspace"
-# Lưu ý: Dữ liệu projects thực tế được pipeline ghi vào projects_data/ (qua volume mount)
-# chứ không phải projects/ — projects/ là thư mục ảo, bị .gitignore bỏ qua
-# và hiện tại trống. projects_data/ chứa nội dung thật từ container.
 PROJECTS_ROOT = Path(__file__).resolve().parent.parent / "projects_data"
+# Lưu ý: Trong Docker container, host `projects_data/` được mount vào `/deps/softwarefactory/projects`
+# (xem langgraph-override.yml). Khi chạy trực tiếp trên host, dùng `projects_data/` ngay cạnh repo.
+# Ưu tiên: env var PROJECTS_ROOT_OVERRIDE > projects (nếu mount tồn tại) > projects_data (host fallback)
 
 SCREENSHOT_DIR_NAME = "mockup_screenshots_xem_thu"
 
 app = FastAPI(title="SoftwareFactory Artifact Server")
 
 # Mount toàn bộ sandbox/workspace dưới /artifacts (screenshot PNG, build output — không track git)
-if SANDBOX_WORKSPACE.exists():
-    app.mount("/artifacts", StaticFiles(directory=str(SANDBOX_WORKSPACE)), name="artifacts")
+if PROJECTS_ROOT.exists():
+    app.mount("/artifacts", StaticFiles(directory=str(PROJECTS_ROOT)), name="artifacts")
 else:
-    print(f"[static_server] WARNING: sandbox/workspace not found at {SANDBOX_WORKSPACE}")
+    print(f"[static_server] WARNING: sandbox/workspace not found at {PROJECTS_ROOT}")
 
 # Mount toàn bộ projects/ dưới /repo — nội dung PRD/design/mockup thật (git-tracked, xem repo_store.py)
 PROJECTS_ROOT.mkdir(parents=True, exist_ok=True)
@@ -67,7 +72,7 @@ PROJECTS_ROOT.mkdir(parents=True, exist_ok=True)
 # về cùng 1 thư mục thật trên host.
 repo_store.PROJECTS_ROOT = PROJECTS_ROOT
 
-
+print(f"[static_server] FINAL PROJECTS_ROOT = {PROJECTS_ROOT}")
 def _validate_slug_like(value: str, field_name: str) -> None:
     if "/" in value or "\\" in value or ".." in value:
         raise HTTPException(status_code=400, detail=f"Invalid {field_name}")
@@ -101,28 +106,15 @@ def _build_tree(path: Path, rel: str = "") -> dict:
     return node
 
 
-@app.get("/tree/{thread_id}")
-async def get_tree(thread_id: str):
-    """Trả về cây thư mục (JSON) của workspace 1 thread — screenshot/build
-    output KHÔNG track git (xem /tree/project/{project_id} cho nội dung
-    PRD/design/mockup thật)."""
-    # Chống path traversal: thread_id không được chứa dấu / \ hoặc "..".
-    if "/" in thread_id or "\\" in thread_id or ".." in thread_id:
-        raise HTTPException(status_code=400, detail="Invalid thread_id")
-
-    root = SANDBOX_WORKSPACE / thread_id
-    if not root.exists() or not root.is_dir():
-        raise HTTPException(status_code=404, detail=f"Thread workspace not found: {thread_id}")
-
-    return _build_tree(root)
-
-
 @app.get("/tree/project/{project_id}")
 async def get_project_tree(project_id: str):
     """Cây thư mục (JSON) của 1 project repo — nội dung PRD/design/mockup
     thật, track git qua repo_store.py. project_id hiện = thread_id đầu
     tiên của project (xem quyết định trong ke-hoach-cai-tien-pipeline.md,
-    Giai đoạn 0.2)."""
+    Giai đoạn 0.2).
+    
+    QUAN TRỌNG: Route này phải được đăng ký TRƯỚC /tree/{thread_id} để
+    Starlette không nhầm "project" làm thread_id."""
     if "/" in project_id or "\\" in project_id or ".." in project_id:
         raise HTTPException(status_code=400, detail="Invalid project_id")
 
@@ -133,9 +125,24 @@ async def get_project_tree(project_id: str):
     return _build_tree(root)
 
 
+@app.get("/tree/{thread_id}")
+async def get_tree(thread_id: str):
+    """Trả về cây thư mục (JSON) của workspace 1 thread — screenshot/build
+    output KHÔNG track git (xem /tree/project/{project_id} cho nội dung
+    PRD/design/mockup thật)."""
+    # Chống path traversal: thread_id không được chứa dấu / \ hoặc "..".
+    if "/" in thread_id or "\\" in thread_id or ".." in thread_id:
+        raise HTTPException(status_code=400, detail="Invalid thread_id")
+
+    root = PROJECTS_ROOT / thread_id
+    if not root.exists() or not root.is_dir():
+        raise HTTPException(status_code=404, detail=f"Thread workspace not found: {thread_id}")
+
+    return _build_tree(root)
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "static_dir": str(SANDBOX_WORKSPACE)}
+    return {"status": "ok", "static_dir": str(PROJECTS_ROOT)}
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +210,7 @@ async def save_mockup_screen(project_id: str, slug: str, screen: dict = Body(...
         "preview_warning": preview_warning,
     }
 
-
+print(f"[static_server] Mounting /repo at: {PROJECTS_ROOT}")
 app.mount("/repo", StaticFiles(directory=str(PROJECTS_ROOT)), name="repo")
 
 
@@ -262,5 +269,5 @@ async def save_mockup_screen_html(project_id: str, slug: str, body: dict = Body(
 
 
 if __name__ == "__main__":
-    print(f"[static_server] Serving {SANDBOX_WORKSPACE} on http://0.0.0.0:3001")
+    print(f"[static_server] Serving {PROJECTS_ROOT} on http://0.0.0.0:3001")
     uvicorn.run(app, host="0.0.0.0", port=3001)

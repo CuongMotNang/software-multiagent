@@ -478,7 +478,7 @@ function ReviewApp() {
                         📸 Màn hình {i + 1}: {imgPath.split("/").pop()}
                       </p>
                       <img
-                        src={`/artifacts/${imgPath}${previewCacheBust ? `?v=${previewCacheBust}` : ""}`}
+                        src={`/repo/${imgPath}${previewCacheBust ? `?v=${previewCacheBust}` : ""}`}
                         alt={`Screenshot ${i + 1}`}
                         style={{
                           width: "100%",

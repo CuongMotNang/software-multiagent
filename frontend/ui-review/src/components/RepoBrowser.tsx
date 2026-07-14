@@ -48,7 +48,8 @@ const WS_PREFIX = "ws:";
 const PROJ_PREFIX = "proj:";
 
 function sourcePrefix(path: string): string {
-  return path.startsWith(PROJ_PREFIX) ? PROJ_PREFIX : WS_PREFIX;
+  // Luôn trả về PROJ_PREFIX, bỏ qua ws:
+  return PROJ_PREFIX;
 }
 
 function stripPrefix(path: string): string {

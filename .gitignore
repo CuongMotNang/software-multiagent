@@ -12,7 +12,7 @@ __pycache__/
 
 # Sandbox workspaces (generated code, not source)
 sandbox/workspace/
-
+projects_data/
 # Nested git repos — mỗi project trong projects/ tự có .git riêng (xem repo_store.py)
 projects/
 

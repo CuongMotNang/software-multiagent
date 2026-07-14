@@ -29,7 +29,7 @@ def _get_feedback(state: SoftwareFactoryState) -> str:
 def _ba_node_simple(state: SoftwareFactoryState, thread_id: str, raw_req: str, feedback: str) -> Dict[str, Any]:
     """Cách cũ: 1 lệnh gọi LLM, không tool, không kế hoạch. Đây là baseline để A/B
     so sánh với nhánh agentic — KHÔNG xoá, giữ nguyên để dễ rollback."""
-    provider_name = os.getenv("BA_PROVIDER", None)
+    provider_name = os.getenv("BA_PROVIDER") or None
     llm = llm_factory(provider_name)
 
     system_prompt = load_prompt("ba_system")
@@ -73,29 +73,23 @@ def _ba_node_simple(state: SoftwareFactoryState, thread_id: str, raw_req: str, f
         "status": "running",
         "gate_decision": None,
         "current_gate": "",
-        "pending_gate_role": "",
         "node_stats": node_stats,
         "content_history": content_history,
     }
 
 
 def _ba_node_agentic(state: SoftwareFactoryState, thread_id: str, raw_req: str, feedback: str) -> Dict[str, Any]:
-    """Cách mới: dùng OpenHands SDK Agent thật (FileEditorTool + TaskTrackerTool),
-    có kế hoạch, có tự đọc lại/tự sửa, và — khác biệt quan trọng nhất so với bản cũ —
-    ĐỌC PRD CŨ khi có feedback thay vì viết lại từ đầu (gap #1 trong tài liệu kiến trúc).
-
-    ⚠️ Nhánh này CHƯA được test với LLM thật (chưa có mạng/API key trong môi trường
-    viết code) — chỉ mới verify import/API tĩnh. Bật thử bằng BA_USE_AGENT=true và
-    theo dõi kỹ log trước khi tin tưởng dùng thật.
+    """Cách mới: dùng OpenCode agent (opencode serve HTTP REST) — đơn giản, đã test
+    thành công trong test_opencode_simple.py. Agent tự đọc file, lập kế hoạch, viết
+    PRD.md, tự kiểm tra và tự sửa.
     """
     from graph.agent_runtime import run_agent
+    from graph.repo_store import AGENT_WORKSPACE_ROOT
 
-    workspace_root = Path(__file__).resolve().parent.parent.parent / "sandbox" / "workspace"
-    workspace_path = workspace_root / thread_id / "ba_work"
+    # Workspace trong AGENT_WORKSPACE_ROOT/<threadID>/ba_work
+    workspace_path = AGENT_WORKSPACE_ROOT / thread_id / "ba_work"
 
-    # Build Skill từ đúng nội dung prompts/system/ba_system.txt hiện có — KHÔNG viết
-    # lại quy ước PRD từ đầu, chỉ đổi CÁCH đưa nó vào agent (qua Skill có trigger,
-    # thay vì nhét cứng vào system_prompt của 1 lệnh gọi đơn).
+    # Load prompt từ prompts/system/ba_system.txt
     ba_prompt_content = load_prompt("ba_system")
 
     prev_prd_block = ""
@@ -112,7 +106,7 @@ def _ba_node_agentic(state: SoftwareFactoryState, thread_id: str, raw_req: str, 
         if feedback else ""
     )
 
-    instructions = f"""Đọc kỹ yêu cầu khách hàng dưới đây và viết PRD vào file PRD.md.
+    instructions = f"""Read the customer requirements below and write a PRD into file PRD.md.
 
 ## YÊU CẦU KHÁCH HÀNG
 {raw_req}
@@ -121,24 +115,20 @@ Quy ước cấu trúc PRD (BẮT BUỘC tuân theo):
 {ba_prompt_content}
 
 Quy trình làm việc:
-1. Dùng task tracker lập kế hoạch trước khi viết bất cứ thứ gì.
-2. {"Đọc bản PRD cũ ở trên, xác định đúng phần cần sửa theo phản hồi, sửa TRÊN BẢN ĐÓ." if feedback else "Viết PRD.md hoàn chỉnh theo đúng cấu trúc quy định."}
-3. Đọc lại PRD.md vừa viết/sửa, tự kiểm tra: có thiếu yêu cầu nào từ đề bài gốc
-   không, có mâu thuẫn nội bộ không. Sửa lại nếu cần — đừng chỉ liệt kê vấn đề
-   rồi bỏ qua.
-4. Khi thực sự hoàn tất, dừng lại.
+1. {"Đọc bản PRD cũ ở trên, xác định đúng phần cần sửa theo phản hồi, sửa TRÊN BẢN ĐÓ." if feedback else "Viết PRD.md hoàn chỉnh theo đúng cấu trúc quy định."}
+2. Đọc lại PRD.md vừa viết/sửa, tự kiểm tra: có thiếu yêu cầu nào từ đề bài gốc
+   không, có mâu thuẫn nội bộ không. Sửa lại nếu cần.
+3. Khi thực sự hoàn tất, dừng lại.
 """
 
     cfg = {
-        "usage_id": "ba-agent",
         "model": os.getenv("BA_LLM_MODEL", os.getenv("NVIDIA_MODEL", "openai/gpt-oss-120b")),
         "api_key": os.getenv("BA_LLM_API_KEY", os.getenv("NVIDIA_API_KEY", "")),
         "base_url": os.getenv("BA_LLM_BASE_URL", os.getenv("NVIDIA_API_BASE", "https://integrate.api.nvidia.com/v1")),
-        "max_iteration_per_run": int(os.getenv("BA_MAX_ITERATIONS", "30")),
     }
 
     result = run_agent(
-        "openhands_text",
+        "opencode",
         {"instructions": instructions, "workspace_path": workspace_path, "output_file": "PRD.md"},
         cfg,
     )
@@ -165,7 +155,6 @@ Quy trình làm việc:
         "status": "running",
         "gate_decision": None,
         "current_gate": "",
-        "pending_gate_role": "",
         "node_stats": node_stats,
         "content_history": content_history,
     }

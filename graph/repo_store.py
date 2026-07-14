@@ -21,6 +21,7 @@ Cấu trúc:
 """
 
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,15 +32,32 @@ PROJECTS_ROOT = Path(__file__).resolve().parent.parent / "projects"
 # Dùng cho các file KHÔNG track git (screenshot PNG, build output...) —
 # giữ nguyên đường dẫn cũ để không phá vỡ mockup_renderer.py / static_server.py
 # (route /artifacts vẫn mount đúng sandbox/workspace như trước, không đổi).
-SANDBOX_ROOT = Path(__file__).resolve().parent.parent / "sandbox"
+SANDBOX_ROOT = Path(__file__).resolve().parent.parent / "projects_data"
+
+# ── AGENT_WORKSPACE_ROOT ──
+# Đường dẫn gốc cho workspace của agent nodes (ba, prd, design, ...).
+# Giống logic static_server.py: ưu tiên env PROJECTS_ROOT_OVERRIDE >
+# projects (Docker mount) > projects_data (host fallback).
+_env_override = os.environ.get("PROJECTS_ROOT_OVERRIDE", "")
+if _env_override:
+    AGENT_WORKSPACE_ROOT = Path(_env_override)
+elif (Path(__file__).resolve().parent.parent / "projects").exists() and any(
+    (Path(__file__).resolve().parent.parent / "projects").iterdir()
+):
+    # Docker container: volume được mount vào projects/
+    AGENT_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent / "projects"
+else:
+    # Host fallback
+    AGENT_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent / "projects_data"
 
 
 def screenshot_dir(thread_id: str) -> Path:
-    """Thư mục lưu PNG screenshot của mockup — luôn là bản MỚI NHẤT, không
-    versioned (khác với HTML — HTML lưu trong git repo, xem lịch sử qua
-    ``list_versions()``; PNG chỉ cần hiển thị bản hiện tại nên không cần).
+    """Thư mục lưu PNG screenshot của mockup — dùng AGENT_WORKSPACE_ROOT
+    thay vì hardcode projects_data.
+
+    Path: AGENT_WORKSPACE_ROOT/<thread_id>/mockup_screenshots/
     """
-    d = SANDBOX_ROOT / "workspace" / thread_id / "mockup_screenshots"
+    d = AGENT_WORKSPACE_ROOT / thread_id / "mockup_screenshots"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -192,20 +210,7 @@ def read_design(thread_id: str) -> str:
 
 
 def save_mockup_screens(thread_id: str, screens: list[dict]) -> list[Path]:
-    """Lưu nhiều màn hình, mỗi lần gọi = 1 commit (có thể chứa nhiều file).
-
-    Không còn thư mục v{N} riêng — mỗi màn hình ghi đè đúng 1 file cố định
-    (``mockup/screens/{filename}``), lịch sử version xem qua ``list_versions()``
-    (git log), không qua tên thư mục nữa.
-
-    Từ Giai đoạn 3.3: ``filename`` thường là ``.json`` (UI JSON), không còn
-    ``.html`` — hàm này không quan tâm định dạng, ``content`` là gì thì ghi
-    y nguyên, caller (ui_node) tự quyết định phần mở rộng.
-
-    Args:
-        screens: list[{"filename": "01_login.json", "content": "..."}]
-                 (chấp nhận cả key "html" cũ để không phá code gọi cũ)
-    """
+    """Lưu nhiều màn hình, mỗi lần gọi = 1 commit (có thể chứa nhiều file)."""
     d = _project_dir(thread_id)
     paths: list[Path] = []
     for screen in screens:
@@ -288,8 +293,6 @@ def list_artifacts(thread_id: str) -> list:
 
 
 def save_design_tokens(thread_id: str, tokens_json: str) -> str:
-    """Lưu design_tokens.json — KHÔNG qua gate riêng (không có decision),
-    nhưng vẫn track git để xem lịch sử thay đổi (Giai đoạn 3.1)."""
     return _commit_file(
         thread_id,
         "design/design_tokens.json",
@@ -303,7 +306,6 @@ def read_design_tokens(thread_id: str) -> str:
 
 
 def save_gate_feedback(thread_id: str, gate: str, feedback: str, decision: str) -> str:
-    """Giữ format markdown-append như cũ (đổi sang JSON có cấu trúc ở Giai đoạn 2)."""
     relpath = f"feedback/feedback_{gate}.md"
     existing = _read_file(thread_id, relpath)
     ts = _now()

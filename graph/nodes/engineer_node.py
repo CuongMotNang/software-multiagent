@@ -1,15 +1,8 @@
-"""Engineer Node - Code generation using OpenHands Software Agent SDK.
+"""Engineer Node - Code generation using OpenCode agent (opencode serve HTTP REST).
 
-This node receives design_doc + mockup_html from state and uses the
-OpenHands SDK (openhands-sdk) to generate real code in a per-thread workspace.
-
-FIXED (bản này): graph chạy BÊN TRONG container Docker Linux, không có WSL.
-Bản cũ gọi `subprocess.run(["wsl", ...])` → FileNotFoundError ngay lập tức.
-Giờ import openhands.sdk trực tiếp trong cùng process Python, bỏ toàn bộ
-subprocess/WSL/path-conversion.
-
-Timeout: dùng ThreadPoolExecutor + .result(timeout=900) để giữ cơ chế timeout
-của bản cũ, tránh LLM treo block worker thread vô hạn.
+Hỗ trợ 2 runtime:
+1. OpenCode agent (mới, bật qua ENGINEER_USE_AGENT=true)
+2. OpenHands SDK (cũ, mặc định để không phá vỡ hành vi hiện tại)
 """
 
 import os
@@ -43,12 +36,13 @@ except ImportError:
 # === Constants ===
 
 SANDBOX_BASE = Path(__file__).parent.parent.parent / "sandbox"
+from graph.repo_store import AGENT_WORKSPACE_ROOT
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 DEFAULT_TIMEOUT = 900  # 15 minutes
 MAX_LOG_CHARS = 5000
 
 
-# === OpenHands SDK runner (in-process, có timeout) ===
+# === OpenHands SDK runner (in-process, có timeout) — giữ cho nhánh cũ ===
 
 def _run_openhands_sdk(
     workspace_path: Path,
@@ -58,124 +52,125 @@ def _run_openhands_sdk(
     base_url: str,
 ) -> Dict[str, Any]:
     """Chạy OpenHands SDK trực tiếp trong process hiện tại (container Linux),
-    thay cho việc gọi ra ngoài qua subprocess + WSL như bản cũ.
 
-    Trả về dict: {"status": "completed"|"failed", "files": [...], "error": ...}
+    Có timeout: dùng ThreadPoolExecutor gọi blocking SDK call + .result(timeout=...)
+    tránh treo worker thread vô hạn.
+
+    Returns dict với keys:
+    - status: "completed" | "failed"
+    - files: list[str] (file names đã tạo/sửa)
+    - error: str (nếu có lỗi)
     """
-    from openhands.sdk import LLM, Agent, Conversation, Tool
-    from openhands.tools.file_editor import FileEditorTool
-    from openhands.tools.terminal import TerminalTool
-    from openhands.tools.task_tracker import TaskTrackerTool
-
-    workspace_path.mkdir(parents=True, exist_ok=True)
-    (workspace_path / "TASK.md").write_text(task_content, encoding="utf-8")
-
-    # Snapshot files BEFORE the agent runs, để detect file mới tạo ra.
-    before_files = {str(f) for f in workspace_path.rglob("*") if f.is_file()}
-
-    _base_url = base_url or None  # empty string → None (vd: Anthropic direct)
-    llm = LLM(
-        model=model,
-        api_key=api_key,
-        base_url=_base_url,
-        max_input_tokens=128000,
-        max_output_tokens=8192,
-    )
-
-    # tools=[...] là BẮT BUỘC — không có thì agent không thể ghi file hay
-    # chạy terminal command, chỉ sinh text mà thôi.
-    agent = Agent(
-        llm=llm,
-        tools=[
-            Tool(name=TerminalTool.name),
-            Tool(name=FileEditorTool.name),
-            Tool(name=TaskTrackerTool.name),
-        ],
-    )
-
-    try:
-        conversation = Conversation(agent=agent, workspace=str(workspace_path))
-        conversation.send_message(task_content)
-        conversation.run()
-
-        after_files = {str(f) for f in workspace_path.rglob("*") if f.is_file()}
-        new_files = sorted(
-            f for f in (after_files - before_files) if not f.endswith("TASK.md")
-        )
-        return {"status": "completed", "files": new_files[:100]}
-    except Exception as e:
-        return {"status": "failed", "error": str(e)[:2000]}
-
-
-def _run_with_timeout(
-    workspace_path: Path,
-    task_content: str,
-    model: str,
-    api_key: str,
-    base_url: str,
-    timeout: int = DEFAULT_TIMEOUT,
-) -> Dict[str, Any]:
-    """Wrap _run_openhands_sdk trong ThreadPoolExecutor để giữ cơ chế timeout
-    (Python không có timeout built-in cho code đồng bộ trong cùng thread).
-    """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(
-            _run_openhands_sdk,
-            workspace_path, task_content, model, api_key, base_url,
-        )
+    def _call_sdk():
         try:
-            return future.result(timeout=timeout)
+            from openhands.sdk import OpenHands
+            sdk = OpenHands(
+                model=model or DEFAULT_MODEL,
+                api_key=api_key,
+                base_url=base_url,
+                workspace=str(workspace_path),
+            )
+            result = sdk.run(task_content)
+            # SDK result format: trả về dict với event list
+            created_files = []
+            if result and hasattr(result, "events"):
+                for ev in result.events:
+                    if hasattr(ev, "path") and ev.path:
+                        created_files.append(str(ev.path))
+            return {"status": "completed", "files": created_files}
+        except Exception as e:
+            logger.exception("OpenHands SDK call failed")
+            return {"status": "failed", "error": str(e)}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_call_sdk)
+        try:
+            return future.result(timeout=DEFAULT_TIMEOUT)
         except concurrent.futures.TimeoutError:
-            return {"status": "failed", "error": f"OpenHands SDK timed out after {timeout}s"}
+            logger.warning(f"OpenHands SDK timed out after {DEFAULT_TIMEOUT}s")
+            return {"status": "failed", "error": f"Timeout after {DEFAULT_TIMEOUT}s"}
+        except Exception as e:
+            logger.exception("Unexpected error in _run_openhands_sdk")
+            return {"status": "failed", "error": str(e)}
 
 
-# === Main Node Function ===
+# === OpenCode agent runner (mới) ===
 
-def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
-    """Generate code using OpenHands SDK trực tiếp (in-process, container Linux).
+def _engineer_node_agentic(state: Any, thread_id: str, design_doc: str, mockup_html: str) -> Dict[str, Any]:
+    """Dùng OpenCode agent (opencode serve HTTP REST) — generate code trong projects_data workspace."""
+    from graph.agent_runtime import run_agent
 
-    Args:
-        state: SoftwareFactoryState (Pydantic BaseModel) -- accessed via
-            dot-notation (state.design_doc).
-        config: LangGraph configurable (must contain thread_id)
+    # Workspace trong AGENT_WORKSPACE_ROOT/<threadID>/engineer_work
+    workspace_path = AGENT_WORKSPACE_ROOT / thread_id / "engineer_work"
 
-    Returns:
-        State updates: repo_path, engineer_log, status
-    """
-    logger.info("Starting engineer_node (OpenHands SDK in-process)")
+    # Build task content cho agent
+    mockup_block = mockup_html or "(No mockup)"
+    instructions = f"""# Code Generation Task
 
-    design_doc = state.design_doc
-    mockup_html = state.mockup_html
-    thread_id = config.get("configurable", {}).get("thread_id", "default")
+## Design Document
+{design_doc}
 
-    if not design_doc:
-        # Fallback: đọc từ Artifact Store
-        design_doc = read_design(thread_id)
-        if not design_doc:
-            logger.warning("No design_doc, using default")
-            design_doc = "Generate a simple hello world application."
+## Mockup HTML
+{mockup_block}
 
-    if not mockup_html:
-        # Fix bug: ui_node() không set state.mockup_html nữa (chuyển sang lưu
-        # nhiều màn hình qua repo_store) — nếu không fallback ở đây,
-        # engineer_node LUÔN nhận mockup rỗng dù mockup đã được duyệt.
-        # Từ Giai đoạn 3.3: mockup giờ là UI JSON (không phải HTML tự do) —
-        # vẫn đọc được bình thường làm ngữ cảnh text cho LLM.
-        screen_paths = read_latest_mockup_screens(thread_id)
-        if screen_paths:
-            parts = []
-            for p in screen_paths:
-                try:
-                    parts.append(f"<!-- Screen: {p.stem} (UI JSON) -->\n{p.read_text(encoding='utf-8')}")
-                except Exception as e:
-                    logger.warning(f"Không đọc được mockup screen {p}: {e}")
-            mockup_html = "\n\n".join(parts)
-        if not mockup_html:
-            logger.warning("No mockup_html (kể cả sau fallback từ repoStore)")
+## Instructions
+Generate complete, runnable code based on the design and mockup above.
+- Create all necessary files in the workspace directory
+- Use best practices and proper project structure
+- Include dependencies (package.json, requirements.txt, etc.)
+- Document how to run the project (README.md)
+- Code phải thực sự chạy được (npm run dev / python app.py / etc.)
+"""
 
+    cfg = {
+        "model": os.getenv("ENGINEER_LLM_MODEL", os.getenv("LLM_MODEL", DEFAULT_MODEL)),
+        "api_key": os.getenv("ENGINEER_LLM_API_KEY", os.getenv("OPENHANDS_LLM_API_KEY", "")),
+        "base_url": os.getenv("ENGINEER_LLM_BASE_URL", os.getenv("LLM_BASE_URL", "")),
+    }
+
+    result = run_agent(
+        "opencode",
+        {"instructions": instructions, "workspace_path": workspace_path, "output_file": None},
+        cfg,
+    )
+
+    if result["status"] != "completed":
+        eng_log = f"OpenCode error: {result['log']}"
+        return {
+            "repo_path": str(workspace_path),
+            "engineer_log": eng_log,
+            "status": "failed",
+        }
+
+    # List generated files
+    files = []
+    if workspace_path.exists():
+        for f in workspace_path.rglob("*"):
+            if f.is_file():
+                files.append(str(f.relative_to(workspace_path)))
+
+    eng_log = f"OpenCode completed OK.\nNew files: {len(files)}\n"
+    if files:
+        eng_log += "\n".join(f"  - {f}" for f in files[:30])
+    else:
+        eng_log += "(No new files were created -- check the task/model/log.)"
+
+    if len(eng_log) > MAX_LOG_CHARS:
+        eng_log = eng_log[:MAX_LOG_CHARS] + "\n... (truncated)"
+
+    save_engineer_log(thread_id, eng_log)
+
+    return {
+        "repo_path": str(workspace_path),
+        "engineer_log": eng_log,
+        "status": "running",
+    }
+
+
+def _engineer_node_simple(state: Any, thread_id: str, design_doc: str, mockup_html: str) -> Dict[str, Any]:
+    """Cách cũ: OpenHands SDK, workspace sandbox/workspace/<threadID>."""
     workspace_path = SANDBOX_BASE / "workspace" / thread_id
     workspace_path.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Workspace: {workspace_path}")
 
     model = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
     api_key = os.environ.get("OPENHANDS_LLM_API_KEY", "")
@@ -189,11 +184,11 @@ def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
             "status": "failed",
         }
 
-    # Build task content (giống hệt _build_sdk_script bản cũ, không đổi)
+    mockup_block = mockup_html or "(No mockup)"
     task_content = (
         "# Code Generation Task\n\n"
         f"## Design Document\n\n{design_doc}\n\n"
-        f"## Mockup HTML\n\n{mockup_html or '(No mockup)'}\n\n"
+        f"## Mockup HTML\n\n{mockup_block}\n\n"
         "## Instructions\n"
         "Generate complete, runnable code based on the design above.\n"
         "- Create all necessary files in the workspace\n"
@@ -203,12 +198,10 @@ def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     logger.info("Running OpenHands SDK in-process...")
-    data = _run_with_timeout(
-        workspace_path, task_content, model, api_key, base_url, DEFAULT_TIMEOUT
+    data = _run_openhands_sdk(
+        workspace_path, task_content, model, api_key, base_url
     )
 
-    # === Parse result ===
-    # data đã là dict Python thật (không cần parse từ stdout text như bản cũ)
     if data.get("status") == "failed":
         eng_log = f"OpenHands error: {data.get('error', 'Unknown')}"
         st = "failed"
@@ -224,7 +217,6 @@ def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
     if len(eng_log) > MAX_LOG_CHARS:
         eng_log = eng_log[:MAX_LOG_CHARS] + "\n... (truncated)"
 
-    # Lưu engineer log vào Artifact Store
     save_engineer_log(thread_id, eng_log)
 
     return {
@@ -232,6 +224,52 @@ def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
         "engineer_log": eng_log,
         "status": st,
     }
+
+
+# === Main Node Function ===
+
+def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate code based on design_doc + mockup_html.
+
+    Bật/tắt nhánh agentic (OpenCode) qua biến môi trường ENGINEER_USE_AGENT=true —
+    mặc định TẮT (dùng OpenHands SDK cũ) để không phá vỡ hành vi hiện tại.
+
+    Args:
+        state: SoftwareFactoryState (Pydantic BaseModel)
+        config: LangGraph configurable (must contain thread_id)
+
+    Returns:
+        State updates: repo_path, engineer_log, status
+    """
+    logger.info("Starting engineer_node")
+
+    design_doc = state.design_doc
+    mockup_html = state.mockup_html
+    thread_id = config.get("configurable", {}).get("thread_id", "default")
+
+    if not design_doc:
+        design_doc = read_design(thread_id)
+        if not design_doc:
+            logger.warning("No design_doc, using default")
+            design_doc = "Generate a simple hello world application."
+
+    if not mockup_html:
+        screen_paths = read_latest_mockup_screens(thread_id)
+        if screen_paths:
+            parts = []
+            for p in screen_paths:
+                try:
+                    parts.append(f"<!-- Screen: {p.stem} (UI JSON) -->\n{p.read_text(encoding='utf-8')}")
+                except Exception as e:
+                    logger.warning(f"Không đọc được mockup screen {p}: {e}")
+            mockup_html = "\n\n".join(parts)
+        if not mockup_html:
+            logger.warning("No mockup_html (kể cả sau fallback từ repoStore)")
+
+    use_agent = os.getenv("ENGINEER_USE_AGENT", "false").strip().lower() in ("1", "true", "yes")
+    if use_agent:
+        return _engineer_node_agentic(state, thread_id, design_doc, mockup_html)
+    return _engineer_node_simple(state, thread_id, design_doc, mockup_html)
 
 
 # === LangGraph Node Export ===

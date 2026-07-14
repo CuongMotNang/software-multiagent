@@ -27,8 +27,8 @@ def llm_factory(provider: Optional[str] = None) -> BaseLLM:
         ValueError: Nếu provider không được hỗ trợ.
     """
     import os
-    if provider is None:
-        provider = os.getenv("LLM_PROVIDER", "nvidia")
+    if not provider:
+        provider = os.getenv("LLM_PROVIDER") or "nvidia"
     
     provider = provider.lower().strip()
     cls = _PROVIDERS.get(provider)

@@ -1,5 +1,4 @@
-"""
-UINode: Generate HTML/CSS mockup screens trực tiếp (Giai đoạn 3.3) & render
+"""UINode: Generate HTML/CSS mockup screens trực tiếp (Giai đoạn 3.3) & render
 preview PNG (Giai đoạn 3.4).
 
 Từ Bước 1 (chuyển từ Puck sang GrapesJS): LLM sinh HTML/CSS tự do thay vì
@@ -8,6 +7,7 @@ không cần bước trung gian render_screen_to_html(). PNG vẫn chụp qua Pl
 từ chính HTML LLM sinh ra.
 """
 
+import os
 import re
 from html.parser import HTMLParser
 from pathlib import Path
@@ -26,6 +26,7 @@ from graph.repo_store import (
     screenshot_dir,
     read_design_tokens,
     SANDBOX_ROOT,
+    AGENT_WORKSPACE_ROOT,
 )
 from graph.schemas import DesignTokens
 import json
@@ -38,7 +39,7 @@ PROMPT_DIR = CUR_DIR / ".." / "prompts"
 # sandbox/workspace/{thread_id}/artifacts/..., không phải
 # sandbox/workspace/{thread_id}/... như code cũ từng hardcode.
 WORKSPACE_ROOT = SANDBOX_ROOT / "workspace"
-
+from graph.repo_store import AGENT_WORKSPACE_ROOT
 # Chỉ khớp đúng format mà design_system prompt yêu cầu:
 #   {số_thứ_tự}_{tên_file}|{tên_hiển_thị}   ví dụ: 01_login|Đăng nhập
 # KHÔNG dùng "bất kỳ dòng nào có dấu |" vì design_doc còn chứa mermaid
@@ -77,7 +78,6 @@ def _ask_llm(prompt: str, *, max_tokens=20000, **kwargs):
     """Trả về LLMResponse đầy đủ (content + usage + model), KHÔNG chỉ string,
     để ui_node() cộng dồn được token qua nhiều lần gọi (mỗi màn hình 1 lần).
     """
-    import os
     from graph.llm import llm_factory
 
     provider_name = os.getenv("UI_PROVIDER", None)
@@ -173,8 +173,6 @@ class _HTMLValidateParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]):
         tag_lower = tag.lower()
-        # Bắt tag tự đóng sai cú pháp: <div/> thay vì <div> (HTML5 không cho phép)
-        # HTMLParser không phân biệt, ta kiểm tra raw — nhưng ở đây chỉ log warning
         if tag_lower not in self._VOID_ELEMENTS:
             self._open_stack.append(tag_lower)
 
@@ -186,11 +184,9 @@ class _HTMLValidateParser(HTMLParser):
         if not self._open_stack:
             self.errors.append(f"Thẻ đóng </{tag}> không có thẻ mở tương ứng")
             return
-        # Tìm thẻ mở khớp gần nhất (duyệt từ cuối stack)
         found = False
         for i in range(len(self._open_stack) - 1, -1, -1):
             if self._open_stack[i] == tag_lower:
-                # Đóng tất cả thẻ con chưa đóng bên trong
                 unclosed = self._open_stack[i + 1:]
                 for uc in unclosed:
                     self.errors.append(f"Thẻ <{uc}> chưa được đóng trước khi đóng </{tag_lower}>")
@@ -201,7 +197,7 @@ class _HTMLValidateParser(HTMLParser):
             self.errors.append(f"Thẻ đóng </{tag}> không khớp với thẻ mở nào trong stack")
 
     def handle_data(self, data: str):
-        pass  # text content không cần validate
+        pass
 
     def finalize(self):
         """Gọi sau khi parse xong — kiểm tra thẻ còn mở."""
@@ -215,7 +211,6 @@ def _validate_html(html: str) -> str | None:
     """Validate HTML cơ bản. Trả về None nếu OK, hoặc string mô tả lỗi."""
     if not html.strip():
         return "HTML rỗng — LLM không trả về nội dung"
-    # Kiểm tra có ít nhất 1 thẻ HTML thực sự (không chỉ text thuần)
     if not re.search(r'<\s*(\w+)', html):
         return "Không tìm thấy thẻ HTML nào — output có thể là plain text, không phải HTML"
     parser = _HTMLValidateParser()
@@ -225,7 +220,6 @@ def _validate_html(html: str) -> str | None:
     except Exception as e:
         return f"HTML parser crash: {e}"
     if parser.errors:
-        # Giới hạn 5 lỗi đầu để không làm prompt retry quá dài
         return "HTML validation errors: " + "; ".join(parser.errors[:5])
     return None
 
@@ -245,7 +239,6 @@ def _generate_screen_html(
     """Sinh HTML/CSS cho 1 màn hình — validate HTML cơ bản, retry 1 lần nếu sai.
 
     Trả về (html_content | None, llm_response, error_message | None).
-    LLM trả về raw HTML (không code fence), ta strip fence + validate.
     """
     system_prompt = _read_prompt("ui_screen_html_system.txt")
     prd_summary = prd[:2000] if prd else ""
@@ -311,6 +304,126 @@ def _capture_screens_to(html_paths: list[Path], output_dir: Path) -> list[Path]:
             print(f"  ⚠️ PNG failed for {html_path.name}: {e}")
     return png_paths
 
+
+# ---------------------------------------------------------------------------
+# OpenCode agentic branch
+# ---------------------------------------------------------------------------
+
+def _ui_node_agentic(state: SoftwareFactoryState, thread_id: str, design: str, prd: str, tokens_json: str, tokens: DesignTokens) -> dict[str, Any]:
+    """Dùng OpenCode agent (opencode serve HTTP REST) — tạo mockup screens tự động."""
+    from graph.agent_runtime import run_agent
+    from graph.prompt_loader import load_prompt
+
+    # Workspace trong AGENT_WORKSPACE_ROOT/<threadID>/ui_work
+    # fallback thread_id nếu None (tránh lỗi PosixPath / NoneType khi chạy frontend)
+    safe_thread_id = thread_id or "default"
+    workspace_path = AGENT_WORKSPACE_ROOT / safe_thread_id / "ui_work"
+
+    ui_system = _read_prompt("ui_screen_html_system.txt")
+    if not ui_system:
+        ui_system = load_prompt("ui_screen_html_system")
+
+    design_tokens_text = json.dumps(tokens.model_dump(), indent=2, ensure_ascii=False)
+
+    instructions = f"""Read the Design Document and Design Tokens below, then generate HTML/CSS mockup screens into files.
+
+## DESIGN DOCUMENT
+{design}
+
+## PRD (for business context)
+{prd or '(không có PRD riêng)'}
+
+## DESIGN TOKENS (BẮT BUỘC dùng đúng tên CSS class, màu, font, spacing)
+{design_tokens_text}
+
+Quy tắc tạo mockup (BẮT BUỘC tuân theo):
+{ui_system}
+
+Quy trình làm việc:
+1. Đọc Design Document, tìm danh sách các màn hình UI cần tạo.
+2. Với mỗi màn hình, tạo file HTML '<slug>.html' trong workspace directory.
+3. HTML phải: (a) dùng ĐÚNG CSS class names từ design tokens, (b) style nội tuyến
+   (<style>) hoặc inline style giữ đúng màu/font/spacing từ tokens,
+   (c) layout hoàn chỉnh, responsive, có thể mở trực tiếp trên browser.
+4. Sau khi tạo xong tất cả màn hình, liệt kê danh sách file đã tạo.
+5. Dừng lại.
+"""
+
+    cfg = {
+        "model": os.getenv("UI_LLM_MODEL", os.getenv("NVIDIA_MODEL", "openai/gpt-oss-120b")),
+        "api_key": os.getenv("UI_LLM_API_KEY", os.getenv("NVIDIA_API_KEY", "")),
+        "base_url": os.getenv("UI_LLM_BASE_URL", os.getenv("NVIDIA_API_BASE", "https://integrate.api.nvidia.com/v1")),
+    }
+
+    result = run_agent(
+        "opencode",
+        {"instructions": instructions, "workspace_path": workspace_path, "output_file": None},
+        cfg,
+    )
+
+    if result["status"] != "completed":
+        return dict(
+            mockup_screenshots=[],
+            status="failed",
+            error=f"OpenCode agent thất bại: {result['log']}",
+        )
+
+    # Collect HTML files generated by agent
+    generated_files: list[dict] = []
+    if workspace_path.exists():
+        for f in sorted(workspace_path.glob("*.html")):
+            generated_files.append({"filename": f.name, "content": f.read_text(encoding="utf-8")})
+
+    if not generated_files:
+        return dict(
+            mockup_screenshots=[],
+            status="failed",
+            error="OpenCode agent không tạo ra file HTML nào",
+        )
+
+    # ── lưu HTML vào git repo project ──
+    html_paths: list[Path] = save_mockup_screens(thread_id, generated_files)
+
+    # ── chụp PNG ──
+    shot_dir = screenshot_dir(thread_id)
+    html_preview_paths: list[Path] = []
+    for entry in generated_files:
+        slug = entry["filename"].replace(".html", "")
+        preview_path = shot_dir / f"{slug}.preview.html"
+        preview_path.write_text(entry["content"], encoding="utf-8")
+        html_preview_paths.append(preview_path)
+
+    png_paths: list[Path] = []
+    if html_preview_paths:
+        try:
+            png_paths = _capture_screens_to(html_preview_paths, shot_dir)
+        except Exception as e:
+            print(f"  ⚠️ PNG capture failed: {e}")
+
+    # URL cho frontend
+    mockup_screenshots: list[str] = [
+        p.relative_to(AGENT_WORKSPACE_ROOT).as_posix()
+        for p in png_paths
+    ]
+
+    node_stats = update_node_stats(
+        state.node_stats, "ui",
+        reject_count=count_rejects(state.gate_history, "gate_mockup"),
+        tokens_used=result["prompt_tokens"] + result["completion_tokens"],
+        model=result["model"],
+    )
+    screens_summary = f"{len(generated_files)} màn hình (HTML): " + ", ".join(
+        f["filename"].replace(".html", "") for f in generated_files
+    )
+    content_history = push_content_history(state.content_history, "ui", screens_summary)
+
+    return dict(
+        mockup_screenshots=mockup_screenshots,
+        node_stats=node_stats,
+        content_history=content_history,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main entry
 # ---------------------------------------------------------------------------
@@ -326,8 +439,7 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
     design = state.design_doc or ""
     prd = state.prd_v1 or state.prd_approved or ""
 
-    # ── Giai đoạn 3.2/3.3: design_tokens BẮT BUỘC — không cho sinh screen
-    # mới mà thiếu input này (đúng quyết định đã chốt trong kế hoạch) ──
+    # ── Giai đoạn 3.2/3.3: design_tokens BẮT BUỘC ──
     tokens_json = state.design_tokens or read_design_tokens(thread_id)
     if not tokens_json:
         print("  ✗ Không có design_tokens — dừng, không sinh mockup (chạy design_tokens_node trước).")
@@ -346,6 +458,11 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
             error=f"design_tokens.json không hợp lệ: {e}",
         )
 
+    # ── nhánh agentic (OpenCode) — bật qua UI_USE_AGENT=true ──
+    use_agent = os.getenv("UI_USE_AGENT", "false").strip().lower() in ("1", "true", "yes")
+    if use_agent:
+        return _ui_node_agentic(state, thread_id, design, prd, tokens_json, tokens)
+
     # ── list screens from design (3 tầng fallback, giữ nguyên như cũ) ──
     screens = _list_screens(state)
     if not screens:
@@ -360,11 +477,9 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
         ]
     print(f"  ✓ Sẽ generate {len(screens)} màn hình: {[s for s, _ in screens]}")
 
-    # ── generate HTML/CSS từng màn hình — mỗi lần gọi kèm CONTEXT các màn
-    # hình đã sinh trước đó trong CÙNG lần chạy này (nhất quán style/class
-    # name giữa các màn) ──
-    generated_files: list[dict] = []      # [{"filename": ..., "content": html_str}]
-    generated_html_paths: list[Path] = []  # để chụp PNG ở bước sau
+    # ── generate HTML/CSS từng màn hình ──
+    generated_files: list[dict] = []
+    generated_html_paths: list[Path] = []
     previous_summary_lines: list[str] = []
     total_tokens = 0
     model_used = ""
@@ -386,20 +501,17 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
 
         generated_files.append({"filename": f"{slug}.html", "content": html_str})
 
-        # Đoán các class CSS chính được dùng để tóm tắt cho context màn sau
         class_names = set(re.findall(r'class="([^"]+)"', html_str))
         tag_summary = ", ".join(sorted(class_names)[:6]) if class_names else "không rõ"
         previous_summary_lines.append(f"- {slug} ({label}): class chính [{tag_summary}]")
 
-    # ── lưu HTML vào git repo project (1 commit/lần) ──
+    # ── lưu HTML vào git repo project ──
     html_paths: list[Path] = save_mockup_screens(thread_id, generated_files)
     if html_paths:
         print(f"  ✓ Đã lưu {len(html_paths)} file HTML vào git repo project ({thread_id})")
 
-    # ── Giai đoạn 3.4: chụp PNG TRỰC TIẾP từ HTML LLM sinh (không cần
-    # render_screen_to_html() trung gian nữa — HTML đã là HTML) ──
+    # ── Giai đoạn 3.4: chụp PNG ──
     shot_dir = screenshot_dir(thread_id)
-    # Ghi HTML preview vào sandbox để Playwright đọc
     for entry in generated_files:
         slug = entry["filename"].replace(".html", "")
         preview_path = shot_dir / f"{slug}.preview.html"
@@ -415,15 +527,12 @@ def ui_node(state: SoftwareFactoryState, config: RunnableConfig | None = None, *
             print(f"  ⚠️ PNG capture failed: {e}")
 
     # ━━ URL cho frontend ━━
-    # Lưu ý: frontend (App.tsx) tự thêm prefix "/artifacts/" khi render ảnh,
-    # nên ở đây chỉ lưu đường dẫn tương đối từ WORKSPACE_ROOT, KHÔNG có /artifacts/
-    # (không lặp lại prefix — tránh URL bị double /artifacts//artifacts/...)
     mockup_screenshots: list[str] = [
         p.relative_to(WORKSPACE_ROOT).as_posix()
         for p in png_paths
     ]
 
-    # ── Observability: token/model/history ──
+    # ── Observability ──
     node_stats = update_node_stats(
         state.node_stats, "ui",
         reject_count=count_rejects(state.gate_history, "gate_mockup"),
