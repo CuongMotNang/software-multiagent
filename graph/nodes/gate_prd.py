@@ -13,11 +13,16 @@ def gate_prd(state: SoftwareFactoryState) -> Dict[str, Any]:
         "pending_gate_role": "ba",
     }
     
-    # Gọi interrupt để dừng luồng và truyền payload thông tin duyệt
+    # Gọi interrupt để dừng luồng và truyền payload thông tin duyệt.
+    # critic_summary + escalation_questions chỉ để HIỂN THỊ cho người duyệt
+    # nhìn nhanh hơn (category-tag surfacing, không chấm điểm — giống
+    # checkpoint-preview.md) — KHÔNG có nhánh nào ở đây tự động bỏ qua gate.
     decision = interrupt({
         "gate": "gate_prd",
         "role": "ba",
         "prd_v1": state.prd_v1,
+        "critic_summary": state.critic_reports.get("prd", {}),
+        "escalation_questions": state.pending_escalation_questions,
     })
     
     # Nhận giá trị từ Command(resume=...)
@@ -49,7 +54,11 @@ def gate_prd(state: SoftwareFactoryState) -> Dict[str, Any]:
     # Clear gate flag khi đã xử lý xong
     updates["current_gate"] = ""
     updates["pending_gate_role"] = ""
-        
+
+    # Người đã quyết định xong (dù approve/edit/reject) -> câu hỏi escalation
+    # cũ không còn cần hiển thị nữa, tránh gate lần sau hiện lại câu hỏi cũ.
+    updates["pending_escalation_questions"] = ""
+
     return updates
 
 # Alias

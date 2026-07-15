@@ -105,6 +105,58 @@ class SoftwareFactoryState(BaseModel):
         description="Theo node -> N bản gần nhất [{content, timestamp}], N=MAX_HISTORY_VERSIONS"
     )
 
+    # === Critic pass / Triage (BMAD-inspired, xem docs/architecture-bmad.md) ===
+    critic_reports: dict[str, dict] = Field(
+        default_factory=dict,
+        description=(
+            "Theo node -> {lens_id: {verdict, findings: [...], report_path}}. "
+            "Mỗi lens là 1 subagent review độc lập (không chia sẻ context), "
+            "full report ghi ra file qua repo_store, chỉ tóm tắt lưu ở đây."
+        ),
+    )
+    triage_action: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Theo node -> hành động triage gần nhất: "
+            "'proceed' | 'auto_patch' | 'loop_upstream' | 'halt_escalate'."
+        ),
+    )
+    review_loop_iteration: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Theo node -> số vòng lặp bad_spec-loopback đã chạy (non-convergence "
+            "guard). Vượt ngưỡng MAX_REVIEW_LOOP_ITERATIONS thì bắt buộc "
+            "halt_escalate thay vì lặp lại vô hạn."
+        ),
+    )
+    upstream_feedback: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Theo TÊN NODE ĐÍCH -> nội dung feedback cần xử lý ở lượt chạy kế "
+            "tiếp của node đó. Dùng cho backward-loop thật (vd critic ở PRD "
+            "phát hiện bad_spec do lỗi từ BA -> ghi vào upstream_feedback['ba'], "
+            "khác với gate_history vốn chỉ gắn với đúng 1 gate)."
+        ),
+    )
+    debate_synthesis: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Theo node -> bản tổng hợp (do lead viết) từ phòng họp debate "
+            "point-to-point trước khi producer node chạy. Transcript đầy đủ "
+            "KHÔNG lưu ở đây (đã ghi ra file qua repo_store) — chỉ giữ bản "
+            "tổng hợp gọn, đúng nguyên tắc context isolation."
+        ),
+    )
+    pending_escalation_questions: str = Field(
+        "",
+        description=(
+            "Câu hỏi cụ thể cần người quyết định khi triage trả về "
+            "'halt_escalate' (intent_gap hoặc non-convergence). Gate vẫn luôn "
+            "chờ người như bình thường — trường này chỉ làm giàu payload hiển "
+            "thị tại gate, không tạo thêm gate mới, không tự động bỏ qua người."
+        ),
+    )
+
     # === Metadata ===
     thread_id: str = Field(
         "", description="Thread ID cho LangGraph checkpoint"
@@ -173,3 +225,71 @@ def push_content_history(
     node_hist.insert(0, {"content": content, "timestamp": datetime.now().isoformat()})
     all_history[node_name] = node_hist[:MAX_HISTORY_VERSIONS]
     return all_history
+
+
+# Ngưỡng non-convergence guard cho backward-loop (bad_spec). Giữ giống mặc
+# định của BMAD (dev-auto/step-04-review.md dùng 5) — chỉnh qua .env nếu cần.
+MAX_REVIEW_LOOP_ITERATIONS = int(os.getenv("MAX_REVIEW_LOOP_ITERATIONS", "5"))
+
+
+def update_critic_reports(
+    reports: dict[str, dict], node_name: str, summary: dict
+) -> dict[str, dict]:
+    """BẢN SAO MỚI của critic_reports với entry của node_name được ghi đè
+    bằng summary mới nhất (mỗi node chỉ cần giữ lượt gần nhất, lịch sử đầy đủ
+    đã nằm trong file report do repo_store lưu)."""
+    all_reports = dict(reports)
+    all_reports[node_name] = summary
+    return all_reports
+
+
+def update_triage_action(
+    actions: dict[str, str], node_name: str, action: str
+) -> dict[str, str]:
+    all_actions = dict(actions)
+    all_actions[node_name] = action
+    return all_actions
+
+
+def bump_review_loop_iteration(
+    iterations: dict[str, int], node_name: str
+) -> dict[str, int]:
+    """Tăng bộ đếm vòng lặp bad_spec-loopback của node_name lên 1."""
+    all_iter = dict(iterations)
+    all_iter[node_name] = all_iter.get(node_name, 0) + 1
+    return all_iter
+
+
+def reset_review_loop_iteration(
+    iterations: dict[str, int], node_name: str
+) -> dict[str, int]:
+    """Reset bộ đếm về 0 khi node_name đã proceed sạch qua gate."""
+    all_iter = dict(iterations)
+    all_iter[node_name] = 0
+    return all_iter
+
+
+def update_debate_synthesis(
+    synthesis: dict[str, str], node_name: str, content: str
+) -> dict[str, str]:
+    all_synthesis = dict(synthesis)
+    all_synthesis[node_name] = content
+    return all_synthesis
+
+
+def set_upstream_feedback(
+    feedback: dict[str, str], target_node: str, content: str
+) -> dict[str, str]:
+    """BẢN SAO MỚI của upstream_feedback, ghi feedback cần xử lý cho
+    target_node ở lượt chạy kế tiếp (backward-loop thật, không phải self-loop)."""
+    all_fb = dict(feedback)
+    all_fb[target_node] = content
+    return all_fb
+
+
+def clear_upstream_feedback(
+    feedback: dict[str, str], target_node: str
+) -> dict[str, str]:
+    all_fb = dict(feedback)
+    all_fb.pop(target_node, None)
+    return all_fb

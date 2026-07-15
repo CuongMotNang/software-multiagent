@@ -57,7 +57,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 # Local imports -- the nodes and the shared state model
 from graph.state import SoftwareFactoryState
 from graph.nodes.ba_node import BA_NODE
+from graph.nodes.debate_prd import DEBATE_PRD, should_debate_prd
 from graph.nodes.prd_node import PRD_NODE
+from graph.nodes.critic_prd import CRITIC_PRD
 from graph.nodes.design_node import DESIGN_NODE
 from graph.nodes.design_tokens_node import DESIGN_TOKENS_NODE
 from graph.nodes.gate_prd import GATE_PRD
@@ -134,6 +136,36 @@ def get_checkpointer() -> Any:
 _APPROVE_DECISIONS = ("approve", "approve_with_edit")
 
 
+def route_critic_prd(state: SoftwareFactoryState) -> str:
+    """Quyết định sau critic pass ở bước PRD (xem graph/triage.py).
+
+    - loop_upstream (bad_spec) -> quay lại "ba" thật sự (KHÔNG phải tự-loop
+      trong "prd" như route_gate_prd cũ vẫn làm với reject/edit).
+    - auto_patch -> quay lại "prd" để tự sửa tại chỗ.
+    - proceed / halt_escalate -> luôn đi tiếp "gate_prd". halt_escalate
+      KHÔNG bỏ qua gate — chỉ mang theo pending_escalation_questions để
+      gate_prd hiển thị cho người quyết định, gate người vẫn luôn xảy ra.
+    """
+    action = state.get("triage_action", {}).get("prd") if isinstance(state, dict) \
+        else state.triage_action.get("prd")
+    if action == "loop_upstream":
+        return "ba"
+    if action == "auto_patch":
+        return "prd"
+    return "gate_prd"
+
+
+def route_after_ba(state: SoftwareFactoryState) -> str:
+    """Quyết định sau 'ba': vào phòng họp debate_prd trước, hay đi thẳng 'prd'.
+
+    Dùng graph.nodes.debate_prd.should_debate_prd() — hiện tại static (altitude/
+    criticality_high chưa có nguồn dữ liệu thật trong state, đã thống nhất để
+    tĩnh, không chặn việc build). Vì "prd" được đánh dấu evaluation-like=True
+    trong meeting._EVALUATION_LIKE_NODES nên hàm này luôn trả "debate_prd".
+    """
+    return "debate_prd" if should_debate_prd() else "prd"
+
+
 def route_gate_prd(state: SoftwareFactoryState) -> str:
     """Quyết định chuyển tiếp sau khi BA duyệt PRD.
 
@@ -200,7 +232,9 @@ def build_graph(checkpointer: Any | None = None) -> Any:
 
     # Register nodes
     builder.add_node("ba", BA_NODE)          # raw_requirements -> prd_draft
-    builder.add_node("prd", PRD_NODE)        # prd_draft -> prd_v1
+    builder.add_node("debate_prd", DEBATE_PRD)  # prd_draft -> debate_synthesis["prd"]
+    builder.add_node("prd", PRD_NODE)        # prd_draft (+debate_synthesis) -> prd_v1
+    builder.add_node("critic_prd", CRITIC_PRD)  # prd_v1 -> critic pass + triage
     builder.add_node("design", DESIGN_NODE)  # prd_v1 -> design_doc
     builder.add_node("design_tokens", DESIGN_TOKENS_NODE)  # design_doc -> design_tokens.json (Giai đoạn 3.1)
     builder.add_node("gate_prd", GATE_PRD)   # BA reviews PRD
@@ -211,8 +245,28 @@ def build_graph(checkpointer: Any | None = None) -> Any:
 
     # Workflow edges
     builder.add_edge(START, "ba")
-    builder.add_edge("ba", "prd")
-    builder.add_edge("prd", "gate_prd")
+
+    builder.add_conditional_edges(
+        "ba",
+        route_after_ba,
+        {
+            "debate_prd": "debate_prd",
+            "prd": "prd",
+        }
+    )
+    builder.add_edge("debate_prd", "prd")
+
+    builder.add_edge("prd", "critic_prd")
+
+    builder.add_conditional_edges(
+        "critic_prd",
+        route_critic_prd,
+        {
+            "ba": "ba",
+            "prd": "prd",
+            "gate_prd": "gate_prd",
+        }
+    )
 
     builder.add_conditional_edges(
         "gate_prd",

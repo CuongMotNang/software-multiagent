@@ -305,6 +305,53 @@ def read_design_tokens(thread_id: str) -> str:
     return _read_file(thread_id, "design/design_tokens.json")
 
 
+def save_debate_transcript(thread_id: str, node_name: str, transcript_md: str) -> str:
+    """Ghi toàn bộ transcript debate ra 1 file, commit riêng.
+
+    Context isolation: orchestrator (debate node) không giữ transcript đầy đủ
+    trong state — chỉ giữ bản synthesis do lead viết. Muốn xem lại chi tiết
+    ai nói gì thì đọc file này.
+    """
+    return _commit_file(
+        thread_id,
+        f"debate/{node_name}/transcript.md",
+        transcript_md,
+        message=f"debate({node_name}): transcript",
+    )
+
+
+def read_debate_transcript(thread_id: str, node_name: str) -> str:
+    return _read_file(thread_id, f"debate/{node_name}/transcript.md")
+
+
+def save_critic_report(
+    thread_id: str, node_name: str, lens_id: str, report_md: str
+) -> str:
+    """Ghi full report của 1 critic lens ra file riêng + commit riêng.
+
+    Đây là phần "context isolation" — parent (node điều phối) không giữ
+    toàn văn report trong state/context, chỉ giữ summary ngắn. Muốn đọc lại
+    chi tiết thì gọi read_critic_reports() hoặc mở thẳng file này.
+    """
+    return _commit_file(
+        thread_id,
+        f"critic/{node_name}/{lens_id}.md",
+        report_md,
+        message=f"critic({node_name}): {lens_id}",
+    )
+
+
+def read_critic_reports(thread_id: str, node_name: str) -> Dict[str, str]:
+    """Đọc full report (không phải summary) của mọi lens đã chạy cho node_name."""
+    d = _project_dir(thread_id) / "critic" / node_name
+    if not d.exists():
+        return {}
+    return {
+        p.stem: p.read_text(encoding="utf-8")
+        for p in d.glob("*.md")
+    }
+
+
 def save_gate_feedback(thread_id: str, gate: str, feedback: str, decision: str) -> str:
     relpath = f"feedback/feedback_{gate}.md"
     existing = _read_file(thread_id, relpath)

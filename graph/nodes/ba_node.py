@@ -14,16 +14,31 @@ from graph.prompt_loader import load_prompt
 
 
 def _get_feedback(state: SoftwareFactoryState) -> str:
-    """Lấy phản hồi chỉnh sửa gần nhất cho gate_prd từ gate_history, nếu có."""
-    if not state.gate_history:
-        return ""
-    prd_gates = [h for h in state.gate_history if h.get("gate") == "gate_prd"]
-    if not prd_gates:
-        return ""
-    last_gate = prd_gates[-1]
-    if last_gate.get("decision") in ["edit", "reject"]:
-        return last_gate.get("note", "")
-    return ""
+    """Lấy phản hồi chỉnh sửa gần nhất cho BA.
+
+    Có 2 nguồn, gộp lại nếu cả hai đều có:
+    1. gate_history của gate_prd — người bấm edit/reject trực tiếp ở gate.
+    2. upstream_feedback['ba'] — critic_prd phát hiện bad_spec (PRD lệch so
+       với bản phân tích BA gốc) và tự động quay lại BA, KHÔNG cần người
+       phải bấm reject thủ công. Đây là backward-loop thật (khác node prd
+       tự-loop), nên phải đọc riêng, không chỉ dựa vào gate_history.
+    """
+    parts = []
+
+    if state.gate_history:
+        prd_gates = [h for h in state.gate_history if h.get("gate") == "gate_prd"]
+        if prd_gates:
+            last_gate = prd_gates[-1]
+            if last_gate.get("decision") in ["edit", "reject"]:
+                note = last_gate.get("note", "")
+                if note:
+                    parts.append(f"[Từ người duyệt gate_prd]\n{note}")
+
+    critic_fb = state.upstream_feedback.get("ba", "")
+    if critic_fb:
+        parts.append(f"[Từ critic pass ở bước PRD]\n{critic_fb}")
+
+    return "\n\n".join(parts)
 
 
 def _ba_node_simple(state: SoftwareFactoryState, thread_id: str, raw_req: str, feedback: str) -> Dict[str, Any]:

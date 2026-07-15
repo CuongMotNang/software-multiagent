@@ -25,19 +25,34 @@ from graph.prompt_loader import load_prompt
 
 
 def _get_feedback(state: SoftwareFactoryState) -> str:
-    """Lấy phản hồi chỉnh sửa gần nhất cho gate_prd từ gate_history, nếu có."""
-    if not state.gate_history:
-        return ""
-    prd_gates = [h for h in state.gate_history if h.get("gate") == "gate_prd"]
-    if not prd_gates:
-        return ""
-    last_gate = prd_gates[-1]
-    if last_gate.get("decision") in ["edit", "reject"]:
-        return last_gate.get("note", "")
-    return ""
+    """Lấy phản hồi chỉnh sửa gần nhất cho PRD.
+
+    Gộp 2 nguồn: gate_history của gate_prd (người bấm edit/reject) VÀ
+    upstream_feedback['prd'] (critic_prd phát hiện 'patch' — sửa tại chỗ,
+    không cần quay lại BA, nhưng vẫn cần prd_node chạy lại 1 lượt để áp fix).
+    """
+    parts = []
+
+    if state.gate_history:
+        prd_gates = [h for h in state.gate_history if h.get("gate") == "gate_prd"]
+        if prd_gates:
+            last_gate = prd_gates[-1]
+            if last_gate.get("decision") in ["edit", "reject"]:
+                note = last_gate.get("note", "")
+                if note:
+                    parts.append(f"[Từ người duyệt gate_prd]\n{note}")
+
+    critic_fb = state.upstream_feedback.get("prd", "")
+    if critic_fb:
+        parts.append(f"[Từ critic pass — cần sửa tại chỗ]\n{critic_fb}")
+
+    return "\n\n".join(parts)
 
 
-def _prd_node_simple(state: SoftwareFactoryState, thread_id: str, ba_draft: str, feedback: str) -> Dict[str, Any]:
+def _prd_node_simple(
+    state: SoftwareFactoryState, thread_id: str, ba_draft: str, feedback: str,
+    debate_synthesis: str = "",
+) -> Dict[str, Any]:
     """Cách cũ: 1 lệnh gọi LLM, không tool, không kế hoạch."""
     provider_name = os.getenv("PRD_PROVIDER", None)
     llm = llm_factory(provider_name)
@@ -47,6 +62,13 @@ def _prd_node_simple(state: SoftwareFactoryState, thread_id: str, ba_draft: str,
         "## Bản phân tích BA (ba_draft)\n\n" + ba_draft + "\n\n"
         "Hãy viết SRS chi tiết dựa trên nội dung trên."
     )
+
+    if debate_synthesis:
+        user_prompt += (
+            "\n\n## KẾT LUẬN TỪ BUỔI HỌP TRƯỚC KHI VIẾT PRD (PM/Architect-lite/"
+            "Risk-BA-liaison đã thảo luận) — BẮT BUỘC áp dụng khi viết:\n"
+            f"{debate_synthesis}"
+        )
 
     if feedback:
         user_prompt += (
@@ -97,7 +119,10 @@ def _prd_node_simple(state: SoftwareFactoryState, thread_id: str, ba_draft: str,
     }
 
 
-def _prd_node_agentic(state: SoftwareFactoryState, thread_id: str, ba_draft: str, feedback: str) -> Dict[str, Any]:
+def _prd_node_agentic(
+    state: SoftwareFactoryState, thread_id: str, ba_draft: str, feedback: str,
+    debate_synthesis: str = "",
+) -> Dict[str, Any]:
     """Cách mới: dùng OpenCode agent (opencode serve HTTP REST) — đơn giản, đã test
     thành công. Agent tự đọc file, lập kế hoạch, viết PRD.md, tự kiểm tra và tự sửa.
     """
@@ -123,11 +148,16 @@ def _prd_node_agentic(state: SoftwareFactoryState, thread_id: str, ba_draft: str
         if feedback else ""
     )
 
+    debate_block = (
+        f"\n## KẾT LUẬN TỪ BUỔI HỌP TRƯỚC KHI VIẾT PRD (BẮT BUỘC áp dụng):\n{debate_synthesis}\n"
+        if debate_synthesis else ""
+    )
+
     instructions = f"""Read the BA analysis below and write a detailed PRD (SRS) into file PRD.md.
 
 ## BẢN PHÂN TÍCH BA (ba_draft)
 {ba_draft}
-{feedback_block}{prev_prd_block}
+{debate_block}{feedback_block}{prev_prd_block}
 Quy ước cấu trúc PRD (BẮT BUỘC tuân theo):
 {prd_prompt_content}
 
@@ -212,11 +242,12 @@ def prd_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) 
         }
 
     feedback = _get_feedback(state)
+    debate_synthesis = state.debate_synthesis.get("prd", "")
 
     use_agent = os.getenv("PRD_USE_AGENT", "false").strip().lower() in ("1", "true", "yes")
     if use_agent:
-        return _prd_node_agentic(state, thread_id, ba_draft, feedback)
-    return _prd_node_simple(state, thread_id, ba_draft, feedback)
+        return _prd_node_agentic(state, thread_id, ba_draft, feedback, debate_synthesis)
+    return _prd_node_simple(state, thread_id, ba_draft, feedback, debate_synthesis)
 
 
 # Alias để GraphBuilder dùng
