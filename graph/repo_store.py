@@ -23,9 +23,17 @@ Cấu trúc:
 import json
 import os
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+try:
+    from loguru import logger
+    logger.enable("softwarefactory")
+except ImportError:  # pragma: no cover
+    import logging
+    logger = logging.getLogger("softwarefactory")
 
 PROJECTS_ROOT = Path(__file__).resolve().parent.parent / "projects"
 
@@ -100,6 +108,55 @@ def _project_dir(project_id: str) -> Path:
     return d
 
 
+def _clear_stale_git_lock(project_dir: Path, max_age_s: float = 30.0) -> bool:
+    """Xoá .git/index.lock NẾU nó đã cũ (max_age_s) — dấu hiệu process trước
+    bị kill giữa chừng (rất hay gặp khi debug/dừng đột ngột trên Windows),
+    không phải 1 git process khác đang thực sự chạy. KHÔNG xoá lock mới
+    (an toàn hơn — tránh phá 1 commit đang thực sự diễn ra).
+
+    Trả True nếu đã xoá (nên retry ngay), False nếu không có gì để xoá
+    (lock không tồn tại, hoặc còn quá mới nên không đụng vào)."""
+    lock_path = project_dir / ".git" / "index.lock"
+    if not lock_path.exists():
+        return False
+    try:
+        age_s = time.time() - lock_path.stat().st_mtime
+    except OSError:
+        return False
+    if age_s < max_age_s:
+        return False
+    try:
+        lock_path.unlink()
+        logger.warning(f"Đã xoá .git/index.lock cũ ({age_s:.0f}s) tại {project_dir}")
+        return True
+    except OSError as e:
+        logger.warning(f"Không xoá được .git/index.lock cũ: {e}")
+        return False
+
+
+def _run_git_with_retry(
+    project_dir: Path, *args: str, max_retries: int = 3, backoff_s: float = 0.5
+) -> subprocess.CompletedProcess:
+    """Chạy git, tự retry khi gặp lỗi liên quan .git/index.lock (dù là do
+    lock cũ sót lại, hay do 1 process khác thật sự đang giữ lock ngắn hạn).
+    KHÔNG retry với lỗi khác (VD lỗi cú pháp lệnh) — chỉ retry khi output có
+    dấu hiệu index.lock, để không che giấu lỗi git thật sự khác."""
+    last_result: Optional[subprocess.CompletedProcess] = None
+    for attempt in range(max_retries):
+        result = _run_git(project_dir, *args)
+        if result.returncode == 0:
+            return result
+        combined = (result.stdout or "") + (result.stderr or "")
+        if "index.lock" not in combined and combined.strip():
+            # Lỗi git thật sự khác (không phải lock) — không retry, trả ngay
+            # để _commit_file() báo lỗi chính xác, không giấu lỗi thật.
+            return result
+        last_result = result
+        _clear_stale_git_lock(project_dir)
+        time.sleep(backoff_s * (attempt + 1))
+    return last_result if last_result is not None else _run_git(project_dir, *args)
+
+
 def _commit_file(
     project_id: str,
     relpath: str,
@@ -116,7 +173,7 @@ def _commit_file(
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
 
-    _run_git(d, "add", relpath)
+    _run_git_with_retry(d, "add", relpath)
 
     trailers = []
     if gate:
@@ -127,13 +184,17 @@ def _commit_file(
         trailers.append(f"Checkpoint-Id: {checkpoint_id}")
     full_message = message if not trailers else message + "\n\n" + "\n".join(trailers)
 
-    result = _run_git(d, "commit", "-q", "-m", full_message)
+    result = _run_git_with_retry(d, "commit", "-q", "-m", full_message)
     if result.returncode != 0:
         # "nothing to commit" — nội dung giống hệt bản trước, không phải lỗi
         if "nothing to commit" in (result.stdout + result.stderr):
             head = _run_git(d, "rev-parse", "HEAD")
             return head.stdout.strip()
-        raise RuntimeError(f"git commit thất bại: {result.stderr}")
+        # Lấy cả stdout lẫn stderr — trên 1 số phiên bản git Windows, lỗi
+        # index.lock có thể xuất hiện ở stdout thay vì stderr, hoặc stderr
+        # bị nuốt bởi subprocess buffering. Không để thông báo lỗi rỗng.
+        detail = (result.stderr or "").strip() or (result.stdout or "").strip() or "(không có output từ git)"
+        raise RuntimeError(f"git commit thất bại (relpath={relpath}, returncode={result.returncode}): {detail}")
 
     sha = _run_git(d, "rev-parse", "HEAD")
     return sha.stdout.strip()
@@ -193,6 +254,26 @@ def save_prd(thread_id: str, prd_v1: str) -> str:
 
 def read_prd(thread_id: str) -> str:
     return _read_file(thread_id, "prd/prd.md")
+
+
+def save_ux_spec(thread_id: str, ux_spec: str) -> str:
+    return _commit_file(
+        thread_id, "ux/ux_spec.md", ux_spec, message="ux: cập nhật UX Spec"
+    )
+
+
+def read_ux_spec(thread_id: str) -> str:
+    return _read_file(thread_id, "ux/ux_spec.md")
+
+
+def save_tech_docs(thread_id: str, tech_docs: str) -> str:
+    return _commit_file(
+        thread_id, "docs/README.md", tech_docs, message="docs: cập nhật tài liệu handoff"
+    )
+
+
+def read_tech_docs(thread_id: str) -> str:
+    return _read_file(thread_id, "docs/README.md")
 
 
 def save_design(thread_id: str, design_doc: str) -> str:

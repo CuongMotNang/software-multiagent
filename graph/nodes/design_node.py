@@ -11,17 +11,25 @@ from graph.state import (
     push_content_history,
 )
 from graph.llm import llm_factory
-from graph.repo_store import save_design, read_design, save_prd, read_prd, read_gate_feedback, AGENT_WORKSPACE_ROOT
+from graph.repo_store import (
+    save_design, read_design, save_prd, read_prd, read_gate_feedback,
+    read_ux_spec, AGENT_WORKSPACE_ROOT,
+)
 from graph.prompt_loader import load_prompt
 
 
-def _design_node_simple(state: SoftwareFactoryState, thread_id: str, prd: str, feedback_history: str) -> Dict[str, Any]:
+def _design_node_simple(
+    state: SoftwareFactoryState, thread_id: str, prd: str, feedback_history: str,
+    ux_spec: str = "",
+) -> Dict[str, Any]:
     """Cách cũ: 1 lệnh gọi LLM, không tool, không kế hoạch."""
     provider_name = os.getenv("DESIGN_PROVIDER", None)
     llm = llm_factory(provider_name)
 
     system_prompt = load_prompt("design_system")
     user_prompt = f"## PRD ĐÃ DUYỆT\n\n{prd}\n\n"
+    if ux_spec:
+        user_prompt += f"## UX SPEC (từ Sally, UX Designer — BẮT BUỘC dùng lại danh sách màn hình)\n\n{ux_spec}\n\n"
     if feedback_history:
         user_prompt += (
             f"## LỊCH SỬ NHẬN XÉT TỪ REVIEWER\n"
@@ -70,7 +78,10 @@ def _design_node_simple(state: SoftwareFactoryState, thread_id: str, prd: str, f
     }
 
 
-def _design_node_agentic(state: SoftwareFactoryState, thread_id: str, prd: str, feedback_history: str) -> Dict[str, Any]:
+def _design_node_agentic(
+    state: SoftwareFactoryState, thread_id: str, prd: str, feedback_history: str,
+    ux_spec: str = "",
+) -> Dict[str, Any]:
     """Cách mới: dùng OpenCode agent (opencode serve HTTP REST) — agent tự đọc file,
     lập kế hoạch, viết DESIGN.md, tự kiểm tra và tự sửa.
     """
@@ -95,11 +106,16 @@ def _design_node_agentic(state: SoftwareFactoryState, thread_id: str, prd: str, 
         if feedback_history else ""
     )
 
+    ux_block = (
+        f"\n## UX SPEC (từ Sally, UX Designer — BẮT BUỘC dùng lại danh sách màn hình)\n{ux_spec}\n"
+        if ux_spec else ""
+    )
+
     instructions = f"""Read the PRD below and write a Design Document into file DESIGN.md.
 
 ## PRD ĐÃ DUYỆT
 {prd}
-{feedback_block}{prev_design_block}
+{ux_block}{feedback_block}{prev_design_block}
 Quy ước cấu trúc Design Document (BẮT BUỘC tuân theo):
 {design_prompt_content}
 
@@ -184,11 +200,27 @@ def design_node(state: SoftwareFactoryState, config: RunnableConfig | None = Non
         }
     
     feedback_history = read_gate_feedback(thread_id, "gate_design")
+    readiness_feedback = read_gate_feedback(thread_id, "gate_readiness")
+    if readiness_feedback:
+        feedback_history = (
+            f"{feedback_history}\n\n[Từ gate_readiness — phát hiện lệch cross-artifact]\n{readiness_feedback}"
+            if feedback_history else f"[Từ gate_readiness — phát hiện lệch cross-artifact]\n{readiness_feedback}"
+        )
+    critic_feedback = state.upstream_feedback.get("design", "")
+    if critic_feedback:
+        feedback_history = (
+            f"{feedback_history}\n\n[Từ critic pass]\n{critic_feedback}"
+            if feedback_history else critic_feedback
+        )
+
+    ux_spec = state.ux_spec.strip()
+    if not ux_spec:
+        ux_spec = read_ux_spec(thread_id)
 
     use_agent = os.getenv("DESIGN_USE_AGENT", "false").strip().lower() in ("1", "true", "yes")
     if use_agent:
-        return _design_node_agentic(state, thread_id, prd, feedback_history)
-    return _design_node_simple(state, thread_id, prd, feedback_history)
+        return _design_node_agentic(state, thread_id, prd, feedback_history, ux_spec)
+    return _design_node_simple(state, thread_id, prd, feedback_history, ux_spec)
 
 # Alias để GraphBuilder dùng
 DESIGN_NODE = design_node

@@ -57,10 +57,17 @@ from langgraph.checkpoint.memory import InMemorySaver
 # Local imports -- the nodes and the shared state model
 from graph.state import SoftwareFactoryState
 from graph.nodes.ba_node import BA_NODE
+from graph.nodes.debate_ba import DEBATE_BA, should_debate_ba
 from graph.nodes.debate_prd import DEBATE_PRD, should_debate_prd
 from graph.nodes.prd_node import PRD_NODE
 from graph.nodes.critic_prd import CRITIC_PRD
+from graph.nodes.ux_node import UX_NODE
+from graph.nodes.critic_ux import CRITIC_UX, route_critic_ux
 from graph.nodes.design_node import DESIGN_NODE
+from graph.nodes.critic_design import CRITIC_DESIGN
+from graph.nodes.tech_writer_node import TECH_WRITER_NODE
+from graph.nodes.readiness_node import READINESS_NODE
+from graph.nodes.gate_readiness import GATE_READINESS, route_gate_readiness
 from graph.nodes.design_tokens_node import DESIGN_TOKENS_NODE
 from graph.nodes.gate_prd import GATE_PRD
 from graph.nodes.gate_design import GATE_DESIGN
@@ -155,6 +162,16 @@ def route_critic_prd(state: SoftwareFactoryState) -> str:
     return "gate_prd"
 
 
+def route_before_ba(state: SoftwareFactoryState) -> str:
+    """Quyết định ngay từ START: vào phòng họp debate_ba trước, hay đi thẳng 'ba'.
+
+    Dùng graph.nodes.debate_ba.should_debate_ba() — cùng cơ chế static như
+    route_after_ba/should_debate_prd. Vì "ba" được đánh dấu evaluation-like=True
+    trong meeting._EVALUATION_LIKE_NODES nên hàm này luôn trả "debate_ba".
+    """
+    return "debate_ba" if should_debate_ba() else "ba"
+
+
 def route_after_ba(state: SoftwareFactoryState) -> str:
     """Quyết định sau 'ba': vào phòng họp debate_prd trước, hay đi thẳng 'prd'.
 
@@ -169,15 +186,32 @@ def route_after_ba(state: SoftwareFactoryState) -> str:
 def route_gate_prd(state: SoftwareFactoryState) -> str:
     """Quyết định chuyển tiếp sau khi BA duyệt PRD.
 
-    Approve (kể cả approve_with_edit) → tiếp tục sang design.
+    Approve (kể cả approve_with_edit) → sang ux (Sally thiết kế UX Spec
+    trước khi Winston vào kiến trúc — xem ux_node.py).
     Reject/Edit → lặp lại prd (không chạy lại ba).
     """
     decision = state.get("gate_decision") if isinstance(state, dict) else state.gate_decision
     if decision in _APPROVE_DECISIONS:
-        return "design"
+        return "ux"
     elif decision in ["edit", "reject"]:
         return "prd"
     return "prd"
+
+
+def route_critic_design(state: SoftwareFactoryState) -> str:
+    """Quyết định sau critic pass ở bước Design — mirror route_critic_prd.
+
+    - loop_upstream (bad_spec) -> quay lại "ux" thật sự (UX Spec chưa đủ rõ).
+    - auto_patch -> quay lại "design" để tự sửa tại chỗ.
+    - proceed / halt_escalate -> luôn đi tiếp "gate_design".
+    """
+    action = state.get("triage_action", {}).get("design") if isinstance(state, dict) \
+        else state.triage_action.get("design")
+    if action == "loop_upstream":
+        return "ux"
+    if action == "auto_patch":
+        return "design"
+    return "gate_design"
 
 
 def route_gate_design(state: SoftwareFactoryState) -> str:
@@ -198,11 +232,12 @@ def route_gate_mockup(state: SoftwareFactoryState) -> str:
     """Quyết định chuyển tiếp sau khi BA duyệt Mockup UI.
 
     Approve (kể cả approve_with_edit — sửa tay qua Puck rồi bấm duyệt)
-    → đi tiếp sang engineer.
+    → sang readiness_check (kiểm tra nhất quán chéo PRD/UX/Design/Mockup)
+    TRƯỚC engineer, không đi thẳng nữa — xem readiness_node.py.
     """
     decision = state.get("gate_decision") if isinstance(state, dict) else state.gate_decision
     if decision in _APPROVE_DECISIONS:
-        return "engineer"
+        return "readiness_check"
     elif decision in ["edit", "reject"]:
         return "ui"
     return "ui"
@@ -232,19 +267,34 @@ def build_graph(checkpointer: Any | None = None) -> Any:
 
     # Register nodes
     builder.add_node("ba", BA_NODE)          # raw_requirements -> prd_draft
+    builder.add_node("debate_ba", DEBATE_BA)  # raw_requirements -> debate_synthesis["ba"]
     builder.add_node("debate_prd", DEBATE_PRD)  # prd_draft -> debate_synthesis["prd"]
     builder.add_node("prd", PRD_NODE)        # prd_draft (+debate_synthesis) -> prd_v1
     builder.add_node("critic_prd", CRITIC_PRD)  # prd_v1 -> critic pass + triage
-    builder.add_node("design", DESIGN_NODE)  # prd_v1 -> design_doc
+    builder.add_node("ux", UX_NODE)          # prd_v1 (approved) -> ux_spec (Sally)
+    builder.add_node("critic_ux", CRITIC_UX)  # ux_spec -> critic pass (verdict đơn giản)
+    builder.add_node("design", DESIGN_NODE)  # prd_v1 + ux_spec -> design_doc
+    builder.add_node("critic_design", CRITIC_DESIGN)  # design_doc -> critic pass + triage
     builder.add_node("design_tokens", DESIGN_TOKENS_NODE)  # design_doc -> design_tokens.json (Giai đoạn 3.1)
     builder.add_node("gate_prd", GATE_PRD)   # BA reviews PRD
     builder.add_node("gate_design", GATE_DESIGN)  # Dev reviews Design Doc
     builder.add_node("ui", UI_NODE)          # UI Prototyper
     builder.add_node("gate_mockup", GATE_MOCKUP)  # BA reviews Mockup HTML
     builder.add_node("engineer", ENGINEER_NODE)   # Code generation via OpenHands
+    builder.add_node("readiness_check", READINESS_NODE)  # cross-artifact alignment check
+    builder.add_node("gate_readiness", GATE_READINESS)   # người duyệt cuối trước engineer
+    builder.add_node("tech_writer", TECH_WRITER_NODE)  # README handoff (Paige)
 
     # Workflow edges
-    builder.add_edge(START, "ba")
+    builder.add_conditional_edges(
+        START,
+        route_before_ba,
+        {
+            "debate_ba": "debate_ba",
+            "ba": "ba",
+        }
+    )
+    builder.add_edge("debate_ba", "ba")
 
     builder.add_conditional_edges(
         "ba",
@@ -272,12 +322,31 @@ def build_graph(checkpointer: Any | None = None) -> Any:
         "gate_prd",
         route_gate_prd,
         {
-            "design": "design",
+            "ux": "ux",
             "prd": "prd"
         }
     )
 
-    builder.add_edge("design", "gate_design")
+    builder.add_edge("ux", "critic_ux")
+    builder.add_conditional_edges(
+        "critic_ux",
+        route_critic_ux,
+        {
+            "ux": "ux",
+            "design": "design",
+        }
+    )
+
+    builder.add_edge("design", "critic_design")
+    builder.add_conditional_edges(
+        "critic_design",
+        route_critic_design,
+        {
+            "ux": "ux",
+            "design": "design",
+            "gate_design": "gate_design",
+        }
+    )
 
     builder.add_conditional_edges(
         "gate_design",
@@ -296,12 +365,23 @@ def build_graph(checkpointer: Any | None = None) -> Any:
         "gate_mockup",
         route_gate_mockup,
         {
-            "engineer": "engineer",
+            "readiness_check": "readiness_check",
             "ui": "ui"
         }
     )
 
-    builder.add_edge("engineer", END)
+    builder.add_edge("readiness_check", "gate_readiness")
+    builder.add_conditional_edges(
+        "gate_readiness",
+        route_gate_readiness,
+        {
+            "engineer": "engineer",
+            "design": "design",
+        }
+    )
+
+    builder.add_edge("engineer", "tech_writer")
+    builder.add_edge("tech_writer", END)
 
     return builder.compile(checkpointer=checkpointer)
 

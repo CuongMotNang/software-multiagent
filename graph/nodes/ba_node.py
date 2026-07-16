@@ -41,7 +41,7 @@ def _get_feedback(state: SoftwareFactoryState) -> str:
     return "\n\n".join(parts)
 
 
-def _ba_node_simple(state: SoftwareFactoryState, thread_id: str, raw_req: str, feedback: str) -> Dict[str, Any]:
+def _ba_node_simple(state: SoftwareFactoryState, thread_id: str, raw_req: str, feedback: str, debate_synthesis: str = "") -> Dict[str, Any]:
     """Cách cũ: 1 lệnh gọi LLM, không tool, không kế hoạch. Đây là baseline để A/B
     so sánh với nhánh agentic — KHÔNG xoá, giữ nguyên để dễ rollback."""
     provider_name = os.getenv("BA_PROVIDER") or None
@@ -49,6 +49,11 @@ def _ba_node_simple(state: SoftwareFactoryState, thread_id: str, raw_req: str, f
 
     system_prompt = load_prompt("ba_system")
     user_prompt = f"## YÊU CẦU KHÁCH HÀNG\n\n{raw_req}\n\n"
+    if debate_synthesis:
+        user_prompt += (
+            f"## KẾT LUẬN BUỔI HỌP TRƯỚC KHI PHÂN TÍCH (debate room)\n"
+            f"{debate_synthesis}\n\n"
+        )
     if feedback:
         user_prompt += (
             f"## PHẢN HỒI YÊU CẦU CHỈNH SỬA TỪ BẢN DUYỆT TRƯỚC\n"
@@ -93,7 +98,7 @@ def _ba_node_simple(state: SoftwareFactoryState, thread_id: str, raw_req: str, f
     }
 
 
-def _ba_node_agentic(state: SoftwareFactoryState, thread_id: str, raw_req: str, feedback: str) -> Dict[str, Any]:
+def _ba_node_agentic(state: SoftwareFactoryState, thread_id: str, raw_req: str, feedback: str, debate_synthesis: str = "") -> Dict[str, Any]:
     """Cách mới: dùng OpenCode agent (opencode serve HTTP REST) — đơn giản, đã test
     thành công trong test_opencode_simple.py. Agent tự đọc file, lập kế hoạch, viết
     PRD.md, tự kiểm tra và tự sửa.
@@ -121,11 +126,16 @@ def _ba_node_agentic(state: SoftwareFactoryState, thread_id: str, raw_req: str, 
         if feedback else ""
     )
 
+    debate_block = (
+        f"\n## KẾT LUẬN BUỔI HỌP TRƯỚC KHI PHÂN TÍCH (debate room)\n{debate_synthesis}\n"
+        if debate_synthesis else ""
+    )
+
     instructions = f"""Read the customer requirements below and write a PRD into file PRD.md.
 
 ## YÊU CẦU KHÁCH HÀNG
 {raw_req}
-{feedback_block}{prev_prd_block}
+{debate_block}{feedback_block}{prev_prd_block}
 Quy ước cấu trúc PRD (BẮT BUỘC tuân theo):
 {ba_prompt_content}
 
@@ -207,11 +217,12 @@ def ba_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) -
         }
 
     feedback = _get_feedback(state)
+    debate_synthesis = state.debate_synthesis.get("ba", "")
 
     use_agent = os.getenv("BA_USE_AGENT", "false").strip().lower() in ("1", "true", "yes")
     if use_agent:
-        return _ba_node_agentic(state, thread_id, raw_req, feedback)
-    return _ba_node_simple(state, thread_id, raw_req, feedback)
+        return _ba_node_agentic(state, thread_id, raw_req, feedback, debate_synthesis)
+    return _ba_node_simple(state, thread_id, raw_req, feedback, debate_synthesis)
 
 
 # Alias để dùng trong graph builder

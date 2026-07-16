@@ -1,0 +1,153 @@
+"""BMAD headless helper — cài _bmad/ vào workspace 1 lần, parse kết quả
+headless từ output của agent runtime.
+
+QUAN TRỌNG — đọc trước khi dùng: BMAD-METHOD chỉ có headless.md (schema JSON
+chính thức: status complete/partial/blocked + assumptions[]/open_questions[])
+cho 4 skill: bmad-brainstorming, bmad-ux, bmad-prd, bmad-architecture (đã
+verify trực tiếp, không có ở bmad-quick-dev/bmad-dev-auto/bmad-agent-dev).
+
+Với pha Implementation (bmad-dev-auto), BMAD có sẵn cơ chế HALT/blocked
+NATIVE (step-01-clarify-and-route.md: "HALT with status blocked and
+blocking condition ...") và chấp nhận invocation prompt tự do làm intent
+bootstrap (không bắt buộc phải có sẵn stories.yaml) — đây LÀ hành vi thật
+đã verify. Nhưng bmad-dev-auto không tự trả JSON có cấu trúc cho pipeline
+Python đọc — nó giao tiếp qua transcript tự do + trạng thái ghi trong file
+spec trên đĩa. Nên với engineer_node, hàm parse dưới đây dùng 1 QUY ƯỚC BỔ
+SUNG của riêng pipeline này (không phải chuẩn BMAD): yêu cầu agent kết thúc
+bằng 1 dòng JSON cuối cùng theo đúng field-name của headless-schemas.md để
+tái dùng chung 1 parser cho mọi skill — đây là phần TỰ THÊM, ghi rõ ở đây để
+không nhầm là hành vi built-in của BMAD.
+"""
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from pathlib import Path
+from typing import Any, Optional, TypedDict
+
+
+class BmadHeadlessResult(TypedDict):
+    status: str  # "complete" | "partial" | "blocked" | "unknown"
+    summary: str
+    assumptions: list[str]
+    open_questions: list[str]
+    raw_output: str
+
+
+_JSON_TAIL_RE = re.compile(r"\{[^{}]*\"status\"\s*:\s*\"(?:complete|partial|blocked)\"[^{}]*\}")
+
+
+def ensure_bmad_installed(
+    workspace_path: Path, tools: str = "opencode", timeout_s: int = 180
+) -> tuple[bool, str]:
+    """Cài `_bmad/` vào workspace nếu chưa có. Idempotent — nếu đã có
+    `_bmad/` thì bỏ qua, không cài lại (npx bmad-method install khá nặng,
+    không nên chạy lại mỗi lần gọi node).
+
+    Trả (ok, message). ok=False không phải lỗi khiến pipeline phải dừng —
+    caller tự quyết định fallback (VD: rơi về nhánh OpenCode custom-prompt
+    cũ) thay vì để cả node fail cứng.
+    """
+    workspace_path.mkdir(parents=True, exist_ok=True)
+    bmad_dir = workspace_path / "_bmad"
+    if bmad_dir.exists():
+        return True, "_bmad/ đã có sẵn, bỏ qua cài lại"
+
+    try:
+        proc = subprocess.run(
+            [
+                "npx", "-y", "bmad-method", "install",
+                "--directory", str(workspace_path),
+                "--modules", "bmm",
+                "--tools", tools,
+                "--yes",
+            ],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except FileNotFoundError:
+        return False, "Không tìm thấy lệnh 'npx' — cần cài Node.js trên máy chạy engineer_node"
+    except subprocess.TimeoutExpired:
+        return False, f"Cài _bmad/ timeout sau {timeout_s}s"
+
+    if proc.returncode != 0:
+        return False, f"npx bmad-method install thất bại: {proc.stderr[-2000:]}"
+    return True, "Cài _bmad/ thành công"
+
+
+def build_headless_prompt(skill_name: str, intent: str, extra_rule: str = "") -> str:
+    """Ghép prompt gọi 1 skill BMAD ở chế độ headless — theo đúng convention
+    của headless.md thật (chỉ có ở bmad-prd/ux/architecture/brainstorming):
+    intent tự do trong tin nhắn đầu, không được hỏi lại, thiếu thì tự suy
+    đoán vào assumptions[] hoặc dừng ở open_questions[] + status: partial.
+
+    Với skill KHÔNG có headless.md thật (VD bmad-dev-auto dùng cho
+    engineer_node) — vẫn dùng đúng khuôn này nhưng đó là quy ước TỰ THÊM của
+    pipeline (xem docstring module), không phải hành vi built-in.
+    """
+    return f"""{skill_name}
+
+## INTENT (chế độ headless — không được hỏi lại người dùng)
+{intent}
+
+## QUY TẮC BẮT BUỘC
+- KHÔNG hỏi lại, KHÔNG dừng chờ trả lời. Nếu thiếu thông tin, tự suy đoán
+  hợp lý và ghi vào assumptions[]; chỉ khi thực sự không đủ để tiếp tục thì
+  dừng với status "partial" kèm open_questions[] cụ thể.
+- {extra_rule if extra_rule else "Hoàn thành trọn vẹn nếu đủ thông tin."}
+- BẮT BUỘC kết thúc phản hồi bằng ĐÚNG 1 dòng JSON cuối cùng (không kèm
+  markdown code fence, không có chữ nào sau đó), format:
+  {{"status": "complete"|"partial"|"blocked", "summary": "...", "assumptions": [...], "open_questions": [...]}}
+"""
+
+
+def parse_headless_result(raw_output: str) -> BmadHeadlessResult:
+    """Tìm dòng JSON cuối cùng khớp schema trong output của agent. Nếu
+    không tìm thấy (agent không tuân thủ quy tắc) -> status "unknown",
+    KHÔNG raise exception — caller tự quyết định coi "unknown" như thế nào
+    (an toàn nhất: coi như "partial", không tự tin là "complete")."""
+    matches = _JSON_TAIL_RE.findall(raw_output or "")
+    if not matches:
+        # thử tìm khối JSON lớn hơn ở cuối văn bản (fallback rộng hơn regex trên)
+        tail = (raw_output or "").strip().splitlines()
+        for line in reversed(tail[-5:]):
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    obj = json.loads(line)
+                    if "status" in obj:
+                        return BmadHeadlessResult(
+                            status=obj.get("status", "unknown"),
+                            summary=obj.get("summary", ""),
+                            assumptions=obj.get("assumptions", []),
+                            open_questions=obj.get("open_questions", []),
+                            raw_output=raw_output,
+                        )
+                except json.JSONDecodeError:
+                    pass
+        return BmadHeadlessResult(
+            status="unknown", summary="", assumptions=[], open_questions=[],
+            raw_output=raw_output,
+        )
+
+    # Lấy khối JSON khớp cuối cùng trong output (agent có thể nhắc tới JSON
+    # ở giữa bài, ta chỉ tin dòng CUỐI theo đúng quy tắc đã yêu cầu).
+    last_match_text = matches[-1]
+    try:
+        obj = json.loads(last_match_text)
+    except json.JSONDecodeError:
+        return BmadHeadlessResult(
+            status="unknown", summary="", assumptions=[], open_questions=[],
+            raw_output=raw_output,
+        )
+
+    return BmadHeadlessResult(
+        status=obj.get("status", "unknown"),
+        summary=obj.get("summary", ""),
+        assumptions=obj.get("assumptions", []),
+        open_questions=obj.get("open_questions", []),
+        raw_output=raw_output,
+    )

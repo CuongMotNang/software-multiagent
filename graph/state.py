@@ -30,6 +30,14 @@ class SoftwareFactoryState(BaseModel):
     )
 
     # === Phase 2: Design ===
+    ux_spec: str = Field(
+        "", description=(
+            "Đặc tả UX từ Sally (UX Designer): user flows, danh sách màn hình "
+            "kèm lý do UX, tương tác/trạng thái edge-case. Input BẮT BUỘC cho "
+            "design_node — Winston (Architect) dùng lại danh sách màn hình ở "
+            "đây thay vì tự nghĩ ra, không thay thế vai trò Architect."
+        )
+    )
     design_doc: str = Field(
         "", description="Thiết kế kỹ thuật (DB schema, API, cấu trúc)"
     )
@@ -67,6 +75,15 @@ class SoftwareFactoryState(BaseModel):
     test_report: dict = Field(                             # đổi str -> dict
         default_factory=dict,
         description="Báo cáo test có cấu trúc: {coverage_percent, bugs, recommendations}"
+    )
+
+    tech_docs: str = Field(
+        "", description=(
+            "Tài liệu handoff (README) do Paige (Technical Writer) tổng hợp "
+            "cuối pipeline từ PRD + Design + UX + code đã sinh — cho người "
+            "đọc sau (dev khác, stakeholder), KHÔNG phải input cho node nào "
+            "khác trong graph."
+        )
     )
 
     # === Phase 4: Deploy ===
@@ -227,9 +244,10 @@ def push_content_history(
     return all_history
 
 
-# Ngưỡng non-convergence guard cho backward-loop (bad_spec). Giữ giống mặc
-# định của BMAD (dev-auto/step-04-review.md dùng 5) — chỉnh qua .env nếu cần.
-MAX_REVIEW_LOOP_ITERATIONS = int(os.getenv("MAX_REVIEW_LOOP_ITERATIONS", "5"))
+# Ngưỡng non-convergence guard cho backward-loop (bad_spec). Import lại từ
+# triage.py — trước đây định nghĩa trùng ở cả 2 nơi (rủi ro lệch mặc định
+# nếu sửa 1 chỗ quên chỗ kia), giờ chỉ 1 nguồn duy nhất.
+from graph.triage import MAX_REVIEW_LOOP_ITERATIONS  # noqa: E402
 
 
 def update_critic_reports(

@@ -96,6 +96,101 @@ def _run_openhands_sdk(
 
 # === OpenCode agent runner (mới) ===
 
+def _engineer_node_bmad(state: Any, thread_id: str, design_doc: str, mockup_html: str) -> Dict[str, Any]:
+    """PILOT Phase 3 — gọi skill bmad-dev-auto THẬT qua OpenCode headless,
+    thay vì prompt tự viết. Xem graph/bmad_headless.py để biết rõ phần nào
+    đã verify từ BMAD-METHOD, phần nào là quy ước tự thêm của pipeline.
+
+    Bật qua ENGINEER_USE_BMAD_SKILL=true — độc lập với ENGINEER_USE_AGENT
+    (không đụng nhánh OpenCode custom-prompt cũ, cả 2 cùng tồn tại để so
+    sánh chất lượng/chi phí)."""
+    from graph.agent_runtime import run_agent
+    from graph.bmad_headless import ensure_bmad_installed, build_headless_prompt, parse_headless_result
+
+    workspace_path = AGENT_WORKSPACE_ROOT / thread_id / "engineer_work_bmad"
+    workspace_path.mkdir(parents=True, exist_ok=True)
+
+    ok, msg = ensure_bmad_installed(workspace_path, tools="opencode")
+    if not ok:
+        return {
+            "repo_path": str(workspace_path),
+            "engineer_log": f"BMAD pilot: không cài được _bmad/ ({msg}) — dùng ENGINEER_USE_AGENT=true để fallback về nhánh OpenCode thường.",
+            "status": "failed",
+        }
+
+    mockup_block = mockup_html or "(No mockup)"
+    intent = (
+        f"Implement 1 ứng dụng hoàn chỉnh, chạy được, dựa trên Design "
+        f"Document và Mockup HTML dưới đây.\n\n"
+        f"## DESIGN DOCUMENT\n{design_doc}\n\n"
+        f"## MOCKUP HTML\n{mockup_block}\n"
+    )
+    instructions = build_headless_prompt(
+        skill_name="bmad-dev-auto",
+        intent=intent,
+        extra_rule=(
+            "Tạo đầy đủ file (code + dependencies + README chạy được) "
+            "ngay trong workspace hiện tại. TDD nếu khả thi (viết test "
+            "trước, chạy test trước khi báo complete)."
+        ),
+    )
+
+    cfg = {
+        "model": os.getenv("ENGINEER_LLM_MODEL", os.getenv("LLM_MODEL", DEFAULT_MODEL)),
+        "api_key": os.getenv("ENGINEER_LLM_API_KEY", os.getenv("OPENHANDS_LLM_API_KEY", "")),
+        "base_url": os.getenv("ENGINEER_LLM_BASE_URL", os.getenv("LLM_BASE_URL", "")),
+    }
+
+    result = run_agent(
+        "opencode",
+        {"instructions": instructions, "workspace_path": workspace_path, "output_file": None},
+        cfg,
+    )
+
+    if result["status"] != "completed":
+        return {
+            "repo_path": str(workspace_path),
+            "engineer_log": f"BMAD pilot (OpenCode) error: {result['log']}",
+            "status": "failed",
+        }
+
+    headless = parse_headless_result(result.get("output", ""))
+
+    files = []
+    if workspace_path.exists():
+        for f in workspace_path.rglob("*"):
+            if f.is_file() and "_bmad" not in f.parts:
+                files.append(str(f.relative_to(workspace_path)))
+
+    eng_log = (
+        f"BMAD pilot (bmad-dev-auto qua OpenCode) — status: {headless['status']}\n"
+        f"Summary: {headless['summary']}\n"
+    )
+    if headless["assumptions"]:
+        eng_log += "Assumptions:\n" + "\n".join(f"  - {a}" for a in headless["assumptions"]) + "\n"
+    if headless["open_questions"]:
+        eng_log += "Open questions:\n" + "\n".join(f"  - {q}" for q in headless["open_questions"]) + "\n"
+    eng_log += f"New files: {len(files)}\n"
+    if files:
+        eng_log += "\n".join(f"  - {f}" for f in files[:30])
+
+    if len(eng_log) > MAX_LOG_CHARS:
+        eng_log = eng_log[:MAX_LOG_CHARS] + "\n... (truncated)"
+
+    save_engineer_log(thread_id, eng_log)
+
+    # status "unknown"/"partial"/"blocked" -> KHÔNG tự tin báo "running" như
+    # thành công bình thường; để pipeline_status phản ánh đúng, tránh gate
+    # sau (nếu có) hiểu nhầm là đã xong hoàn toàn.
+    pipeline_status = "running" if headless["status"] == "complete" else "failed"
+
+    return {
+        "repo_path": str(workspace_path),
+        "engineer_log": eng_log,
+        "status": pipeline_status,
+    }
+
+
 def _engineer_node_agentic(state: Any, thread_id: str, design_doc: str, mockup_html: str) -> Dict[str, Any]:
     """Dùng OpenCode agent (opencode serve HTTP REST) — generate code trong projects_data workspace."""
     from graph.agent_runtime import run_agent
@@ -106,6 +201,11 @@ def _engineer_node_agentic(state: Any, thread_id: str, design_doc: str, mockup_h
     # Build task content cho agent
     mockup_block = mockup_html or "(No mockup)"
     instructions = f"""# Code Generation Task
+
+You are Amelia, Senior Software Engineer. Disciplined in Kent Beck's TDD
+(red, green, refactor — in that order) and the Pragmatic Programmer's
+precision. No task is complete without passing tests. Speak in file paths
+and AC IDs — every statement citable, no fluff.
 
 ## Design Document
 {design_doc}
@@ -120,6 +220,8 @@ Generate complete, runnable code based on the design and mockup above.
 - Include dependencies (package.json, requirements.txt, etc.)
 - Document how to run the project (README.md)
 - Code phải thực sự chạy được (npm run dev / python app.py / etc.)
+- Write tests for the acceptance criteria in the Design Document where
+  feasible, and run them before declaring the task done.
 """
 
     cfg = {
@@ -187,6 +289,9 @@ def _engineer_node_simple(state: Any, thread_id: str, design_doc: str, mockup_ht
     mockup_block = mockup_html or "(No mockup)"
     task_content = (
         "# Code Generation Task\n\n"
+        "You are Amelia, Senior Software Engineer. Disciplined in Kent Beck's "
+        "TDD (red, green, refactor — in that order) and the Pragmatic "
+        "Programmer's precision. No task is complete without passing tests.\n\n"
         f"## Design Document\n\n{design_doc}\n\n"
         f"## Mockup HTML\n\n{mockup_block}\n\n"
         "## Instructions\n"
@@ -195,6 +300,8 @@ def _engineer_node_simple(state: Any, thread_id: str, design_doc: str, mockup_ht
         "- Use best practices and proper project structure\n"
         "- Include dependencies (package.json, requirements.txt, etc.)\n"
         "- Document how to run the project\n"
+        "- Write tests for the acceptance criteria where feasible, and run "
+        "them before declaring the task done.\n"
     )
 
     logger.info("Running OpenHands SDK in-process...")
@@ -265,6 +372,10 @@ def engineer_node(state: Any, config: Dict[str, Any]) -> Dict[str, Any]:
             mockup_html = "\n\n".join(parts)
         if not mockup_html:
             logger.warning("No mockup_html (kể cả sau fallback từ repoStore)")
+
+    use_bmad_skill = os.getenv("ENGINEER_USE_BMAD_SKILL", "false").strip().lower() in ("1", "true", "yes")
+    if use_bmad_skill:
+        return _engineer_node_bmad(state, thread_id, design_doc, mockup_html)
 
     use_agent = os.getenv("ENGINEER_USE_AGENT", "false").strip().lower() in ("1", "true", "yes")
     if use_agent:

@@ -4,6 +4,20 @@ Chạy SAU prd_node, TRƯỚC gate_prd. Không thay thế gate người — ch�
 giàu chất lượng trước khi tới gate, và quyết định có cần quay lại BA
 (bad_spec), tự sửa tại chỗ (patch), hay phải dừng hỏi người (intent_gap)
 trước khi trình gate_prd như bình thường.
+
+3 lens dưới đây được nhóm lại từ rubric 7 CHIỀU thật của BMAD
+(bmm-skills/2-plan-workflows/bmad-prd/assets/prd-validation-checklist.md,
+đã verify trực tiếp) — không phải placeholder tên suông như bản trước.
+Nguyên văn rubric có 7 chiều (decision-readiness, substance-over-theater,
+strategic-coherence, done-ness-clarity, scope-honesty, downstream-usability,
+shape-fit); gộp thành 3 lệnh gọi song song để không đội chi phí token:
+  - Lens 1 (Judgment): decision-readiness + substance-over-theater +
+    strategic-coherence + shape-fit — 4 chiều đòi hỏi PHÁN ĐOÁN chủ quan.
+  - Lens 2 (Testability & Scope): done-ness-clarity + scope-honesty — 2
+    chiều CƠ HỌC, kiểm được bằng bằng chứng cụ thể trong văn bản.
+  - Lens 3 (Seam + Downstream): seam BA<->PRD (đặc thù pipeline của bạn,
+    KHÔNG có trong BMAD) gộp với downstream-usability (glossary/ID nhất
+    quán để Design/UX đọc tiếp được — CÓ trong BMAD).
 """
 from typing import Any, Dict, Optional
 
@@ -25,35 +39,74 @@ NODE_NAME = "prd"
 
 _LENSES = [
     CriticLens(
-        id="feasibility",
-        name="Feasibility Critic",
+        id="judgment",
+        name="Judgment Critic (decision-readiness / substance / coherence / shape-fit)",
         system_prompt=(
-            "Bạn là Feasibility Critic trong một software factory nhỏ. Đọc "
-            "bản PRD dưới đây và chỉ ra những yêu cầu KHÔNG khả thi về mặt "
-            "kỹ thuật, thời gian, hoặc nguồn lực trong bối cảnh 1 đội nhỏ. "
-            "Chỉ nêu vấn đề có bằng chứng cụ thể trong văn bản, không suy "
-            "đoán những gì PRD không nói tới."
+            "Bạn là PRD Judgment Critic. Đọc bản PRD dưới đây và chấm 4 khía "
+            "cạnh cần PHÁN ĐOÁN chủ quan, có bằng chứng cụ thể (trích đoạn/vị "
+            "trí), không tick-box:\n\n"
+            "1. DECISION-READINESS: Người ra quyết định có hành động được "
+            "trên PRD này không? Trade-off có bị nêu trung tính/né tránh "
+            "không (VD: mọi lựa chọn đều 'cân bằng', mọi NFR đều 'quan "
+            "trọng')? Open Questions có thực sự CÒN MỞ, hay là câu hỏi tu từ "
+            "đã có sẵn câu trả lời ngay câu sau?\n"
+            "2. SUBSTANCE OVER THEATER: Phát hiện nội dung 'trang trí' không "
+            "phục vụ quyết định nào — persona không dẫn tới quyết định cụ "
+            "thể nào trong PRD, NFR sáo rỗng kiểu 'phải scalable/secure' mà "
+            "không có ngưỡng số cụ thể, tuyên bố khác biệt/đổi mới không có "
+            "căn cứ.\n"
+            "3. STRATEGIC COHERENCE: PRD có 1 luận điểm xuyên suốt (thesis) "
+            "không, hay là danh sách feature rời rạc gắn tiêu đề section cho "
+            "có? Success Metrics có thực sự đo đúng luận điểm đó không (VD: "
+            "đo DAU/MAU trong khi luận điểm là về CHẤT LƯỢNG tương tác — đây "
+            "là dấu hiệu lệch)?\n"
+            "4. SHAPE FIT: PRD có bị ép vào khuôn sai loại sản phẩm không? "
+            "Sản phẩm B2C/nhiều bên liên quan cần user journey có nhân vật "
+            "cụ thể; tool nội bộ 1 người dùng thì user journey là thừa, cần "
+            "dạng capability-spec thay vì kịch bản nhân vật.\n\n"
+            "Chỉ nêu finding có bằng chứng cụ thể trong văn bản (trích vị "
+            "trí/section), không suy đoán điều PRD không nói tới."
         ),
     ),
     CriticLens(
-        id="edge_case",
-        name="Edge Case / Risk Critic",
+        id="testability_scope",
+        name="Testability & Scope Critic (done-ness / scope-honesty)",
         system_prompt=(
-            "Bạn là Edge Case & Risk Critic. Đọc bản PRD dưới đây, tìm các "
-            "tình huống biên (edge case), luồng lỗi, hoặc rủi ro nghiệp vụ "
-            "quan trọng chưa được đề cập tới. Chỉ nêu vấn đề cụ thể, không "
-            "lặp lại nội dung đã có sẵn trong PRD."
+            "Bạn là PRD Testability & Scope Critic — kiểm tra 2 khía cạnh CƠ "
+            "HỌC, có thể đối chiếu trực tiếp với văn bản:\n\n"
+            "1. DONE-NESS CLARITY: Với MỖI FR, có ít nhất 1 điều kiện kiểm "
+            "được cụ thể (AC dạng Given/When/Then, hoặc số đo cụ thể) không? "
+            "Liệt kê CHÍNH XÁC những FR nào chỉ ghi tính từ mơ hồ ('xử lý "
+            "tốt', 'hiệu năng hợp lý', 'thân thiện với người dùng') mà không "
+            "có ngưỡng/điều kiện kiểm được kèm theo — đây là dimension quan "
+            "trọng nhất vì downstream (Design/Engineer) sẽ dựa vào đây nhiều "
+            "nhất, hãy khắt khe.\n"
+            "2. SCOPE HONESTY: Phần out-of-scope/giả định có được nêu RÕ "
+            "RÀNG hay người đọc phải tự suy luận? Nếu PRD ngầm giả định "
+            "điều gì đó (VD: không nói tới auth nhưng chắc chắn cần) mà "
+            "không đánh dấu là giả định/out-of-scope, đó là finding.\n\n"
+            "Với mỗi FR thiếu AC cụ thể, trích đúng FR-ID và câu văn mơ hồ "
+            "trong finding."
         ),
     ),
     CriticLens(
-        id="seam_with_ba",
-        name="Seam Reviewer (BA <-> PRD)",
+        id="seam_and_downstream",
+        name="Seam Reviewer (BA<->PRD) + Downstream Usability",
         system_prompt=(
-            "Bạn là Seam Reviewer, chuyên soi điểm nối giữa bản phân tích "
-            "gốc của BA (đưa trong phần NGỮ CẢNH) và bản PRD hoàn chỉnh "
-            "(đưa trong phần NỘI DUNG CẦN REVIEW). Tìm chỗ PRD đi lệch, bỏ "
-            "sót, hoặc diễn giải sai ý so với bản BA gốc. Nếu PRD hoàn toàn "
-            "nhất quán với BA, ghi VERDICT: ok."
+            "Bạn có 2 nhiệm vụ trên bản PRD dưới đây, đối chiếu với phần "
+            "NGỮ CẢNH (bản phân tích gốc của BA):\n\n"
+            "1. SEAM BA<->PRD: Tìm chỗ PRD đi lệch, bỏ sót, hoặc diễn giải "
+            "sai ý so với bản BA gốc — đây là điểm nối giữa 2 node trong "
+            "pipeline, không phải khái niệm có sẵn trong BMAD, nhưng quan "
+            "trọng với factory cụ thể này.\n"
+            "2. DOWNSTREAM USABILITY (BMAD): Design/UX Designer sẽ đọc tiếp "
+            "PRD này — thuật ngữ nghiệp vụ (tên entity, tên role...) có "
+            "dùng NHẤT QUÁN xuyên suốt các FR không, hay đổi tên nửa chừng "
+            "(VD: 'khách hàng' ở FR-001 nhưng 'người dùng' ở FR-005 khi rõ "
+            "ràng là cùng 1 đối tượng)? ID của FR/NFR/BR có liên tục, không "
+            "trùng, không có tham chiếu chéo bị đứt (VD: BR-002 nhắc tới "
+            "FR-999 không tồn tại) không?\n\n"
+            "Nếu PRD hoàn toàn nhất quán ở cả 2 khía cạnh, ghi VERDICT: ok."
         ),
     ),
 ]

@@ -123,6 +123,11 @@ def run_critic_pass(
             executor.submit(_call_lens, lens, artifact_text, context): lens
             for lens in lenses
         }
+        # Bước 1: chỉ THU THẬP raw output — KHÔNG commit ở đây. as_completed
+        # chạy trong main thread nên các lệnh git vốn đã tuần tự với nhau,
+        # nhưng tách hẳn 2 bước ra cho rõ ràng + để lỗi commit của 1 lens
+        # không làm mất raw output của các lens khác đã chạy xong.
+        collected: List[tuple[CriticLens, str]] = []
         for future in concurrent.futures.as_completed(future_to_lens):
             lens = future_to_lens[future]
             try:
@@ -130,15 +135,27 @@ def run_critic_pass(
             except Exception as e:  # pragma: no cover
                 logger.exception(f"Critic lens '{lens.id}' failed")
                 raw = f"VERDICT: concerns\nFINDINGS:\n- Lỗi khi chạy lens: {e}"
+            collected.append((lens, raw))
 
-            parsed = _parse_lens_output(raw)
+    # Bước 2: commit TUẦN TỰ trong main thread. Nếu 1 lens lỗi commit (VD
+    # git lock), các lens khác vẫn được lưu — không để 1 lỗi hạ tầng làm mất
+    # toàn bộ kết quả critic pass đã tốn tiền gọi LLM.
+    for lens, raw in collected:
+        parsed = _parse_lens_output(raw)
+        try:
             report_path = save_critic_report(thread_id, node_name, lens.id, raw)
+        except Exception as e:
+            logger.exception(f"Không commit được critic report cho lens '{lens.id}'")
+            report_path = ""
+            parsed["findings"] = parsed["findings"] + [
+                f"(CẢNH BÁO: report của lens này lưu thất bại — {e})"
+            ]
 
-            summary[lens.id] = {
-                "name": lens.name,
-                "verdict": parsed["verdict"],
-                "findings": parsed["findings"],
-                "report_path": report_path,
-            }
+        summary[lens.id] = {
+            "name": lens.name,
+            "verdict": parsed["verdict"],
+            "findings": parsed["findings"],
+            "report_path": report_path,
+        }
 
     return summary
