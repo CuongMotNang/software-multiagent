@@ -205,6 +205,132 @@ Quy trình làm việc:
     }
 
 
+def _prd_node_bmad(
+    state: SoftwareFactoryState, thread_id: str, ba_draft: str, feedback: str,
+    debate_synthesis: str = "",
+) -> Dict[str, Any]:
+    """Gọi skill `bmad-prd` THẬT (có headless.md + assets/headless-schemas.md
+    riêng, đã verify) qua OpenCode headless — khác _prd_node_agentic() ở
+    trên (vốn dùng prompt tự viết prd_system.txt). Bật qua
+    PRD_USE_BMAD_SKILL=true, độc lập với PRD_USE_AGENT (3 nhánh cùng tồn
+    tại: bmad-skill / agentic custom-prompt / simple, để so sánh).
+    """
+    from graph.bmad_headless import (
+        ensure_bmad_installed, build_real_headless_prompt, parse_generic_json_tail,
+    )
+
+    workspace_path = AGENT_WORKSPACE_ROOT / thread_id / "prd_work_bmad"
+    workspace_path.mkdir(parents=True, exist_ok=True)
+
+    ok, msg = ensure_bmad_installed(workspace_path, tools="opencode")
+    if not ok:
+        return {
+            "prd_v1": f"## LỖI: không cài được _bmad/ ({msg}) — dùng PRD_USE_AGENT=true để fallback nhánh agentic custom-prompt.",
+            "status": "failed",
+            "error": msg,
+        }
+
+    if feedback:
+        intent_type = "update"
+        payload_lines = (
+            "- prd.md đã tồn tại trong workspace hiện tại (nếu chưa từng chạy "
+            "create trước đó ở workspace này, coi đây là create thay vì update)\n"
+            f"- change signal (điều cần sửa và lý do):\n{feedback}\n"
+        )
+    else:
+        intent_type = "create"
+        payload_lines = f"- brief/spec nguồn (bản phân tích BA):\n{ba_draft}\n"
+        if debate_synthesis:
+            payload_lines += (
+                f"- ghi chú bổ sung từ buổi họp trước khi viết PRD "
+                f"(Architect-lite/Risk-BA-liaison/PM):\n{debate_synthesis}\n"
+            )
+
+    instructions = build_real_headless_prompt(
+        skill_name="bmad-prd",
+        intent_type=intent_type,
+        payload_lines=payload_lines,
+    )
+
+    cfg = {
+        "model": os.getenv("PRD_LLM_MODEL", os.getenv("NVIDIA_MODEL", "openai/gpt-oss-120b")),
+        "api_key": os.getenv("PRD_LLM_API_KEY", os.getenv("NVIDIA_API_KEY", "")),
+        "base_url": os.getenv("PRD_LLM_BASE_URL", os.getenv("NVIDIA_API_BASE", "https://integrate.api.nvidia.com/v1")),
+    }
+
+    result = run_agent(
+        "opencode",
+        {"instructions": instructions, "workspace_path": workspace_path, "output_file": None},
+        cfg,
+    )
+
+    if result["status"] != "completed":
+        return {
+            "prd_v1": f"## LỖI: bmad-prd headless thất bại — {result['log']}",
+            "status": "failed",
+            "error": result["log"],
+        }
+
+    headless = parse_generic_json_tail(result.get("output", ""))
+
+    prd_v1 = ""
+    prd_path_str = headless.get("prd")
+    if prd_path_str:
+        prd_path = Path(prd_path_str)
+        if not prd_path.is_absolute():
+            prd_path = workspace_path / prd_path_str
+        if prd_path.exists():
+            prd_v1 = prd_path.read_text(encoding="utf-8")
+
+    if not prd_v1:
+        # Fallback: JSON không có path đọc được -> tự quét workspace tìm prd.md
+        candidates = list(workspace_path.rglob("prd.md"))
+        if candidates:
+            prd_v1 = candidates[0].read_text(encoding="utf-8")
+
+    if not prd_v1:
+        return {
+            "prd_v1": (
+                f"## LỖI: bmad-prd headless không tạo được prd.md đọc được "
+                f"(status={headless.get('status', 'unknown')}).\nRaw output "
+                f"(500 ký tự cuối): {result.get('output', '')[-500:]}"
+            ),
+            "status": "failed",
+            "error": "prd.md not found after bmad-prd headless run",
+        }
+
+    save_prd(thread_id, prd_v1)
+
+    # status "blocked"/"partial"/"unknown" -> KHÔNG tự tin coi như xong hoàn
+    # toàn, để tránh gate hiểu nhầm là đã hoàn thành sạch (đúng tinh thần
+    # verify.py của bmad-loop: không tin prose, phải xác nhận trạng thái).
+    pipeline_status = "running" if headless.get("status") == "complete" else "failed"
+
+    node_stats = update_node_stats(
+        state.node_stats, "prd",
+        reject_count=count_rejects(state.gate_history, "gate_prd"),
+        tokens_used=result["prompt_tokens"] + result["completion_tokens"],
+        model=result["model"],
+    )
+    content_history = push_content_history(state.content_history, "prd", prd_v1)
+
+    updates: Dict[str, Any] = {
+        "prd_v1": prd_v1,
+        "status": pipeline_status,
+        "node_stats": node_stats,
+        "content_history": content_history,
+    }
+
+    # Tái dùng field pending_escalation_questions có sẵn (đã wire vào
+    # gate_prd) để bề mặt open_questions[] của bmad-prd tới thẳng người
+    # duyệt, không cần thêm field/gate mới.
+    open_questions = headless.get("open_questions") or []
+    if open_questions:
+        updates["pending_escalation_questions"] = "\n".join(f"- {q}" for q in open_questions)
+
+    return updates
+
+
 def prd_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) -> Dict[str, Any]:
     """Chuyển ba_draft → prd_v1 (phiên bản PRD).
 
@@ -243,6 +369,10 @@ def prd_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) 
 
     feedback = _get_feedback(state)
     debate_synthesis = state.debate_synthesis.get("prd", "")
+
+    use_bmad_skill = os.getenv("PRD_USE_BMAD_SKILL", "false").strip().lower() in ("1", "true", "yes")
+    if use_bmad_skill:
+        return _prd_node_bmad(state, thread_id, ba_draft, feedback, debate_synthesis)
 
     use_agent = os.getenv("PRD_USE_AGENT", "false").strip().lower() in ("1", "true", "yes")
     if use_agent:

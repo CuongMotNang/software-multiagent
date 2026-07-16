@@ -167,6 +167,135 @@ Quy trình làm việc:
     }
 
 
+def _design_node_bmad(
+    state: SoftwareFactoryState, thread_id: str, prd: str, feedback_history: str,
+    ux_spec: str = "",
+) -> Dict[str, Any]:
+    """Gọi skill `bmad-architecture` THẬT qua OpenCode headless. Khác
+    `bmad-prd`: schema trả về field `spine` (ARCHITECTURE-SPINE.md), không
+    phải `design`; input còn yêu cầu thêm `altitude`/`purpose` (đã verify
+    trong headless.md của chính skill này). Bật qua DESIGN_USE_BMAD_SKILL=true.
+
+    altitude="feature" là giá trị TĨNH theo đúng thiết kế đã thống nhất
+    trước đây (meeting.py cũng dùng cùng giá trị mặc định này) — chưa có cơ
+    chế tự chấm altitude theo nội dung thực tế.
+    """
+    from graph.bmad_headless import (
+        ensure_bmad_installed, build_real_headless_prompt, parse_generic_json_tail,
+    )
+
+    workspace_path = AGENT_WORKSPACE_ROOT / thread_id / "design_work_bmad"
+    workspace_path.mkdir(parents=True, exist_ok=True)
+
+    ok, msg = ensure_bmad_installed(workspace_path, tools="opencode")
+    if not ok:
+        return {
+            "design_doc": f"## LỖI: không cài được _bmad/ ({msg}) — dùng DESIGN_USE_AGENT=true để fallback nhánh agentic custom-prompt.",
+            "status": "failed",
+            "error": msg,
+        }
+
+    common_header = (
+        "- altitude: feature\n"
+        "- purpose: build-substrate\n"
+    )
+
+    if feedback_history:
+        intent_type = "update"
+        payload_lines = (
+            common_header +
+            "- ARCHITECTURE-SPINE.md đã tồn tại trong workspace hiện tại (nếu "
+            "chưa từng chạy create trước đó ở workspace này, coi đây là "
+            "create thay vì update)\n"
+            f"- change signal (điều cần sửa và lý do):\n{feedback_history}\n"
+        )
+    else:
+        intent_type = "create"
+        payload_lines = common_header + f"- driving input (PRD đã duyệt):\n{prd}\n"
+        if ux_spec:
+            payload_lines += f"- UX Spec (BẮT BUỘC dùng lại danh sách màn hình):\n{ux_spec}\n"
+
+    instructions = build_real_headless_prompt(
+        skill_name="bmad-architecture",
+        intent_type=intent_type,
+        payload_lines=payload_lines,
+    )
+
+    cfg = {
+        "model": os.getenv("DESIGN_LLM_MODEL", os.getenv("NVIDIA_MODEL", "openai/gpt-oss-120b")),
+        "api_key": os.getenv("DESIGN_LLM_API_KEY", os.getenv("NVIDIA_API_KEY", "")),
+        "base_url": os.getenv("DESIGN_LLM_BASE_URL", os.getenv("NVIDIA_API_BASE", "https://integrate.api.nvidia.com/v1")),
+    }
+
+    result = run_agent(
+        "opencode",
+        {"instructions": instructions, "workspace_path": workspace_path, "output_file": None},
+        cfg,
+    )
+
+    if result["status"] != "completed":
+        return {
+            "design_doc": f"## LỖI: bmad-architecture headless thất bại — {result['log']}",
+            "status": "failed",
+            "error": result["log"],
+        }
+
+    headless = parse_generic_json_tail(result.get("output", ""))
+
+    design_doc = ""
+    spine_path_str = headless.get("spine")
+    if spine_path_str:
+        spine_path = Path(spine_path_str)
+        if not spine_path.is_absolute():
+            spine_path = workspace_path / spine_path_str
+        if spine_path.exists():
+            design_doc = spine_path.read_text(encoding="utf-8")
+
+    if not design_doc:
+        candidates = list(workspace_path.rglob("ARCHITECTURE-SPINE.md"))
+        if candidates:
+            design_doc = candidates[0].read_text(encoding="utf-8")
+
+    if not design_doc:
+        return {
+            "design_doc": (
+                f"## LỖI: bmad-architecture headless không tạo được spine đọc "
+                f"được (status={headless.get('status', 'unknown')}).\nRaw "
+                f"output (500 ký tự cuối): {result.get('output', '')[-500:]}"
+            ),
+            "status": "failed",
+            "error": "ARCHITECTURE-SPINE.md not found after bmad-architecture headless run",
+        }
+
+    save_design(thread_id, design_doc)
+
+    pipeline_status = "running" if headless.get("status") == "complete" else "failed"
+
+    node_stats = update_node_stats(
+        state.node_stats, "design",
+        reject_count=count_rejects(state.gate_history, "gate_design"),
+        tokens_used=result["prompt_tokens"] + result["completion_tokens"],
+        model=result["model"],
+    )
+    content_history = push_content_history(state.content_history, "design", design_doc)
+
+    updates: Dict[str, Any] = {
+        "design_doc": design_doc,
+        "status": pipeline_status,
+        "gate_decision": None,
+        "current_gate": "",
+        "pending_gate_role": "",
+        "node_stats": node_stats,
+        "content_history": content_history,
+    }
+
+    open_questions = headless.get("open_questions") or []
+    if open_questions:
+        updates["pending_escalation_questions"] = "\n".join(f"- {q}" for q in open_questions)
+
+    return updates
+
+
 def design_node(state: SoftwareFactoryState, config: RunnableConfig | None = None) -> Dict[str, Any]:
     """Chuyển prd_approved/prd_v1 → design_doc.
 
@@ -216,6 +345,10 @@ def design_node(state: SoftwareFactoryState, config: RunnableConfig | None = Non
     ux_spec = state.ux_spec.strip()
     if not ux_spec:
         ux_spec = read_ux_spec(thread_id)
+
+    use_bmad_skill = os.getenv("DESIGN_USE_BMAD_SKILL", "false").strip().lower() in ("1", "true", "yes")
+    if use_bmad_skill:
+        return _design_node_bmad(state, thread_id, prd, feedback_history, ux_spec)
 
     use_agent = os.getenv("DESIGN_USE_AGENT", "false").strip().lower() in ("1", "true", "yes")
     if use_agent:

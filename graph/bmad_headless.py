@@ -87,6 +87,11 @@ def build_headless_prompt(skill_name: str, intent: str, extra_rule: str = "") ->
     Với skill KHÔNG có headless.md thật (VD bmad-dev-auto dùng cho
     engineer_node) — vẫn dùng đúng khuôn này nhưng đó là quy ước TỰ THÊM của
     pipeline (xem docstring module), không phải hành vi built-in.
+
+    LƯU Ý: hàm này tự áp 1 schema JSON cứng (status/summary/assumptions/
+    open_questions) — chỉ dùng cho skill KHÔNG có headless.md thật. Với
+    prd/ux/architecture (CÓ headless.md + assets/headless-schemas.md riêng,
+    schema khác nhau giữa 3 skill — xem build_real_headless_prompt bên dưới.
     """
     return f"""{skill_name}
 
@@ -102,6 +107,91 @@ def build_headless_prompt(skill_name: str, intent: str, extra_rule: str = "") ->
   markdown code fence, không có chữ nào sau đó), format:
   {{"status": "complete"|"partial"|"blocked", "summary": "...", "assumptions": [...], "open_questions": [...]}}
 """
+
+
+def build_real_headless_prompt(
+    skill_name: str,
+    intent_type: str,
+    payload_lines: str,
+    extra_rule: str = "",
+) -> str:
+    """Gọi 1 skill CÓ headless.md thật (bmad-prd/bmad-ux/bmad-architecture)
+    theo đúng cách BMAD tự định nghĩa — KHÔNG tự áp schema JSON ở đây (khác
+    build_headless_prompt() ở trên), vì mỗi skill có schema riêng, khác
+    nhau (VD bmad-prd trả field "prd", bmad-ux trả "design"+"experience",
+    bmad-architecture trả "spine") — để agent tự đọc đúng file
+    `references/headless.md` + `assets/headless-schemas.md` của CHÍNH skill
+    đó (đã có sẵn trong _bmad/ do ensure_bmad_installed() cài) và tuân theo,
+    tránh lệch schema do mình tự chép lại sai.
+
+    intent_type: "create" | "update" | "validate" — field `intent` mà
+    headless.md của 3 skill này đều yêu cầu ở input.
+    payload_lines: nội dung cụ thể (PRD, UX Spec, brief...) tương ứng với
+    intent_type, do caller tự soạn theo đúng "Inputs" section trong
+    headless.md của skill đó (khác nhau giữa create/update/validate).
+    """
+    return f"""{skill_name}
+
+## HEADLESS MODE — bắt buộc
+headless: true
+intent: {intent_type}
+
+Đây là lời gọi headless thật (không có người tương tác) — hãy đọc và tuân
+theo ĐÚNG file `references/headless.md` của chính skill `{skill_name}` này
+(đã có sẵn trong thư mục _bmad/ hiện tại) cho toàn bộ lượt chạy: không hỏi
+lại, không chào hỏi, tự suy đoán và ghi vào assumptions[] những gì không
+được xác nhận trực tiếp, dừng ở open_questions[] những gì cần người quyết
+định. Kết thúc bằng ĐÚNG 1 dòng JSON cuối cùng, khớp CHÍNH XÁC schema trong
+`assets/headless-schemas.md` của skill này ứng với intent "{intent_type}"
+(không kèm markdown code fence, không có chữ nào sau JSON).
+
+## PAYLOAD
+{payload_lines}
+
+{extra_rule}
+"""
+
+
+def parse_generic_json_tail(raw_output: str) -> dict:
+    """Parser TỔNG QUÁT — không ép về 1 TypedDict cố định như
+    parse_headless_result() (vốn chỉ đúng cho schema tự chế của
+    bmad-dev-auto). Dùng cho prd/ux/architecture vì mỗi skill trả field
+    khác nhau (prd / design+experience / spine).
+
+    Trả về dict thô parse được (luôn có ít nhất key "status" nếu tìm thấy
+    JSON hợp lệ, "unknown" nếu không tìm thấy gì) — caller tự đọc field
+    riêng của skill mình cần (VD result.get("prd"), result.get("spine")).
+    KHÔNG raise exception.
+    """
+    text = (raw_output or "").strip()
+    if not text:
+        return {"status": "unknown"}
+
+    # Thử tìm JSON hợp lệ ở vài dòng cuối cùng trước (giống parse_headless_result)
+    tail_lines = text.splitlines()
+    for line in reversed(tail_lines[-8:]):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict) and "status" in obj:
+                    return obj
+            except json.JSONDecodeError:
+                continue
+
+    # Fallback: tìm khối {...} lớn nhất ở cuối văn bản (JSON có thể bị
+    # xuống dòng nhiều chỗ, ví dụ có mảng open_questions nhiều phần tử).
+    last_brace_open = text.rfind("{")
+    if last_brace_open != -1:
+        candidate = text[last_brace_open:]
+        try:
+            obj = json.loads(candidate)
+            if isinstance(obj, dict) and "status" in obj:
+                return obj
+        except json.JSONDecodeError:
+            pass
+
+    return {"status": "unknown"}
 
 
 def parse_headless_result(raw_output: str) -> BmadHeadlessResult:
