@@ -75,6 +75,13 @@ _GITIGNORE_CONTENT = """\
 *.jpg
 *.jpeg
 engineer/build/
+# Workspace tạm của các nhánh agentic/bmad-skill (ba_work/, prd_work_bmad/,
+# ux_work_bmad/, design_work_bmad/, engineer_work_bmad/...) — chứa file
+# agent tự sinh ra để pipeline đọc lại, không phải artifact chính thức của
+# project (những cái đó đã được save_*() commit riêng vào đúng thư mục
+# prd/, design/, ux/... rồi). Bỏ qua để tránh untracked-files clutter.
+*_work/
+*_work_bmad/
 """
 
 
@@ -157,6 +164,17 @@ def _run_git_with_retry(
     return last_result if last_result is not None else _run_git(project_dir, *args)
 
 
+def _is_nothing_to_commit(output: str) -> bool:
+    """Git có ít nhất 2 câu thông báo khác nhau cho cùng 1 tình huống 'không
+    có gì để commit' — tuỳ repo có untracked file khác hay không:
+      - "nothing to commit, working tree clean" (repo sạch hoàn toàn)
+      - "nothing added to commit but untracked files present" (có untracked
+        file khác, VD *_work_bmad/ do pilot Phase 3 tạo ra trong cùng repo)
+    Trước đây chỉ check đúng cụm "nothing to commit" — KHÔNG khớp biến thể
+    thứ 2, khiến bị raise RuntimeError oan dù nội dung file không đổi gì."""
+    return "nothing to commit" in output or "nothing added to commit" in output
+
+
 def _commit_file(
     project_id: str,
     relpath: str,
@@ -186,8 +204,9 @@ def _commit_file(
 
     result = _run_git_with_retry(d, "commit", "-q", "-m", full_message)
     if result.returncode != 0:
-        # "nothing to commit" — nội dung giống hệt bản trước, không phải lỗi
-        if "nothing to commit" in (result.stdout + result.stderr):
+        # Không có gì thay đổi so với version trước — không phải lỗi, xem
+        # _is_nothing_to_commit() để biết vì sao check theo 2 cụm khác nhau
+        if _is_nothing_to_commit(result.stdout + result.stderr):
             head = _run_git(d, "rev-parse", "HEAD")
             return head.stdout.strip()
         # Lấy cả stdout lẫn stderr — trên 1 số phiên bản git Windows, lỗi
@@ -307,7 +326,7 @@ def save_mockup_screens(thread_id: str, screens: list[dict]) -> list[Path]:
     result = _run_git(
         d, "commit", "-q", "-m", f"mockup: cập nhật {len(screens)} màn hình\n\nGate: gate_mockup"
     )
-    if result.returncode != 0 and "nothing to commit" not in (result.stdout + result.stderr):
+    if result.returncode != 0 and not _is_nothing_to_commit(result.stdout + result.stderr):
         raise RuntimeError(f"git commit thất bại: {result.stderr}")
     return paths
 

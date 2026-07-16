@@ -19,4 +19,3 @@ projects/
 # Secrets — không bao giờ commit
 .env
 .env.*
-!.env.example

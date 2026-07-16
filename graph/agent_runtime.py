@@ -222,10 +222,83 @@ def run_opencode_agent(task: AgentTask, cfg: dict[str, Any]) -> AgentResult:
         if info.get("error"):
             return AgentResult(status="failed", output="", log=f"OpenCode error: {info['error']}", prompt_tokens=pt, completion_tokens=ct, model=model_id)
 
-        # Nếu không yêu cầu output_file cụ thể (None) → return success luôn,
-        # node tự đọc file từ workspace. Tránh timeout 120s chờ file không tồn tại.
+        # QUAN TRỌNG: POST /session/{id}/message của OpenCode KHÔNG đảm bảo
+        # đợi agent thật sự chạy xong tool-call/ghi file trước khi trả HTTP
+        # response — đây là hạn chế đã biết của chính OpenCode server (xem
+        # sst/opencode#2168, #3075: "empty response... should I be polling
+        # GET /session/{id}/messages?"). Trước đây code coi response ban đầu
+        # là đủ ("output_file is None -> return completed ngay") -> với task
+        # dài (nhiều tool-call, nhiều file, VD bmad-ux) trả về SỚM khi agent
+        # còn đang chạy, dẫn tới output rỗng + file chưa kịp ghi.
+        #
+        # Fix: poll GET /session/{id}/messages tới khi message cuối cùng
+        # KHÔNG đổi nữa qua 2 lần poll liên tiếp (heuristic "đã ổn định" —
+        # OpenCode không có field "completed" tường minh trong response này
+        # theo báo cáo cộng đồng, nên dùng stabilization thay vì tin field
+        # cụ thể nào).
+        final_text = ""
+        # Giới hạn riêng cho vòng poll này, KHÔNG dùng nguyên cfg["timeout"]
+        # (mặc định 600s) — nếu endpoint /messages sai đường dẫn/schema so
+        # với bản OpenCode đang cài (từng có report khác nhau giữa version),
+        # tránh việc MỌI lần gọi đều bị treo tới hết 600s một cách vô ích.
+        poll_timeout_s = min(cfg.get("timeout", 600), 180)
+        poll_deadline = time.time() + poll_timeout_s
+        last_snapshot = None
+        stable_count = 0
+        empty_poll_count = 0
+        while time.time() < poll_deadline:
+            try:
+                msgs_resp = httpx.get(f"{base_url}/session/{session_id}/messages", timeout=10)
+                msgs = msgs_resp.json() if msgs_resp.status_code == 200 else []
+            except (httpx.TransportError, ValueError):
+                msgs = []
+
+            assistant_msgs = [m for m in msgs if (m.get("info") or m).get("role") == "assistant"]
+            if not assistant_msgs:
+                empty_poll_count += 1
+                if empty_poll_count >= 5:
+                    # 15s liên tục không thấy message nào -> nhiều khả năng
+                    # endpoint/schema không khớp bản OpenCode này, không
+                    # phải agent còn đang chạy. Dừng sớm, không đợi hết
+                    # poll_timeout_s vô ích — node vẫn tự fallback quét file
+                    # trong workspace như trước.
+                    logger.warning(
+                        "[agent_runtime] Không đọc được message nào từ "
+                        "/session/%s/messages sau %d lần thử — có thể "
+                        "endpoint/schema khác bản OpenCode đang cài. Dừng "
+                        "sớm, dựa vào việc node tự quét file trong workspace.",
+                        session_id, empty_poll_count,
+                    )
+                    break
+                time.sleep(3)
+                continue
+            empty_poll_count = 0
+            last_msg = assistant_msgs[-1]
+            parts = last_msg.get("parts", [])
+            text_parts = [p.get("text", "") for p in parts if p.get("type") == "text"]
+            snapshot = "".join(text_parts)
+            has_pending_tool = any(
+                p.get("type") == "tool" and p.get("state", {}).get("status") not in ("completed", "error")
+                for p in parts
+            )
+            if snapshot == last_snapshot and not has_pending_tool and snapshot:
+                stable_count += 1
+                if stable_count >= 2:
+                    final_text = snapshot
+                    break
+            else:
+                stable_count = 0
+            last_snapshot = snapshot
+            time.sleep(3)
+        else:
+            logger.warning("[agent_runtime] Timeout chờ OpenCode session ổn định, dùng snapshot cuối cùng đọc được")
+            final_text = last_snapshot or ""
+
+        # Nếu không yêu cầu output_file cụ thể (None) → node tự đọc file từ
+        # workspace, nhưng giờ đã ĐỢI session ổn định thật sự nên file có
+        # nhiều khả năng đã tồn tại khi node đi check.
         if output_file is None:
-            return AgentResult(status="completed", output="", log="ok", prompt_tokens=pt, completion_tokens=ct, model=model_id)
+            return AgentResult(status="completed", output=final_text, log="ok", prompt_tokens=pt, completion_tokens=ct, model=model_id)
 
         output_path = workspace_path / output_file
         deadline = time.time() + cfg.get("output_timeout", 120)

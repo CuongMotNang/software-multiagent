@@ -218,6 +218,8 @@ def _prd_node_bmad(
     from graph.bmad_headless import (
         ensure_bmad_installed, build_real_headless_prompt, parse_generic_json_tail,
     )
+    from graph.repo_store import AGENT_WORKSPACE_ROOT
+    from graph.agent_runtime import run_agent
 
     workspace_path = AGENT_WORKSPACE_ROOT / thread_id / "prd_work_bmad"
     workspace_path.mkdir(parents=True, exist_ok=True)
